@@ -4,12 +4,23 @@ import { z } from "zod";
 import type { AppConfig } from "../config.js";
 import { log } from "../config.js";
 
-export type RewriterTone =
-  | "neutral"
-  | "formal"
-  | "informal"
-  | "academic"
-  | "custom";
+export const RewriterToneSchema = z.enum([
+  "neutral",
+  "formal",
+  "informal",
+  "academic",
+  "custom",
+]);
+export type RewriterTone = z.infer<typeof RewriterToneSchema>;
+
+function ensureClaudeApiKey(apiKey: string): void {
+  if (!process.env.CLAUDE_API_KEY) {
+    process.env.CLAUDE_API_KEY = apiKey;
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    process.env.ANTHROPIC_API_KEY = apiKey;
+  }
+}
 
 export interface RewriteParams {
   originalText: string;
@@ -49,7 +60,9 @@ function chooseClaudeModel(
   textLength: number,
   maxIterations: number,
 ): "sonnet" | "opus" {
-  // Heuristic: use opus for very long texts or many iterations.
+  // Heuristic: prefer opus for very long texts or high iteration counts.
+  // 12k characters ≈ 8–9k tokens, where opus maintains quality and longer context.
+  // >8 iterations implies heavier rewrite loops; opus reduces retries and instability.
   if (textLength > 12000 || maxIterations > 8) {
     return "opus";
   }
@@ -58,7 +71,7 @@ function chooseClaudeModel(
 
 /** Rewrite text with Claude to reduce AI detection and plagiarism. */
 export async function rewriteTextWithClaude(
-  _appConfig: AppConfig,
+  appConfig: AppConfig,
   params: RewriteParams,
 ): Promise<RewriteResult> {
   const {
@@ -73,6 +86,7 @@ export async function rewriteTextWithClaude(
     maxIterations,
   } = params;
 
+  ensureClaudeApiKey(appConfig.claudeApiKey);
   const modelId = chooseClaudeModel(originalText.length, maxIterations);
   const model = claudeCode(modelId);
 
@@ -124,6 +138,13 @@ export async function rewriteTextWithClaude(
     "- Add citations or references that do not exist in the original.",
     "- Fabricate sources or numeric data.",
     "- Change code blocks, inline code, or math expressions other than trivial formatting.",
+    "Examples of what NOT to change:",
+    "- Code block (delimited by triple backticks):",
+    "  ```js",
+    "  const x = 5;",
+    "  ```",
+    "- Inline code (single backticks): `const x = 5;`",
+    "- Math expression (e.g., $E=mc^2$ or \\\\(\\int_0^1 x^2 dx\\\\)).",
     "",
     "When you rewrite:",
     "- Prefer varied sentence lengths.",
@@ -141,24 +162,31 @@ export async function rewriteTextWithClaude(
 
   log("info", "Calling Claude for rewrite", { modelId });
 
-  const result = await generateObject({
-    model,
-    schema: RewriteSchema,
-    prompt,
-  });
+  try {
+    const result = await generateObject({
+      model,
+      schema: RewriteSchema,
+      prompt,
+    });
 
-  const object = result.object;
+    const object = result.object;
 
-  log("debug", "Claude rewrite completed");
-  return {
-    rewrittenText: object.rewrittenText,
-    reasoning: object.reasoning,
-  };
+    log("debug", "Claude rewrite completed");
+    return {
+      rewrittenText: object.rewrittenText,
+      reasoning: object.reasoning,
+    };
+  } catch (error: unknown) {
+    log("error", "Claude rewrite failed", { error });
+    throw new Error(
+      `Claude rewrite failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 /** Analyze text for AI detection and plagiarism risk with Claude. */
 export async function analyzeTextWithClaude(
-  _appConfig: AppConfig,
+  appConfig: AppConfig,
   text: string,
   aiPercent: number | null,
   plagiarismPercent: number | null,
@@ -168,6 +196,7 @@ export async function analyzeTextWithClaude(
   domainHint?: string,
 ): Promise<string> {
   const modelId = chooseClaudeModel(text.length, 1);
+  ensureClaudeApiKey(appConfig.claudeApiKey);
   const model = claudeCode(modelId);
 
   const aiText =
@@ -217,18 +246,25 @@ export async function analyzeTextWithClaude(
 
   log("info", "Calling Claude for analysis", { modelId });
 
-  const result = await generateObject({
-    model,
-    schema: AnalysisSchema,
-    prompt,
-  });
+  try {
+    const result = await generateObject({
+      model,
+      schema: AnalysisSchema,
+      prompt,
+    });
 
-  return result.object.analysis;
+    return result.object.analysis;
+  } catch (error: unknown) {
+    log("error", "Claude analysis failed", { error });
+    throw new Error(
+      `Claude analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 /** Generate a user-facing summary of the optimization run with Claude. */
 export async function summarizeOptimizationWithClaude(
-  _appConfig: AppConfig,
+  appConfig: AppConfig,
   summaryInput: {
     mode: "score_only" | "optimize" | "analyze";
     iterationsUsed: number;
@@ -245,6 +281,7 @@ export async function summarizeOptimizationWithClaude(
   },
 ): Promise<string> {
   const modelId = chooseClaudeModel(summaryInput.finalText.length, 1);
+  ensureClaudeApiKey(appConfig.claudeApiKey);
   const model = claudeCode(modelId);
 
   const prompt = [
@@ -273,10 +310,17 @@ export async function summarizeOptimizationWithClaude(
 
   log("debug", "Calling Claude for optimization summary", { modelId });
 
-  const result = await generateText({
-    model,
-    prompt,
-  });
+  try {
+    const result = await generateText({
+      model,
+      prompt,
+    });
 
-  return result.text;
+    return result.text;
+  } catch (error: unknown) {
+    log("error", "Claude summary failed", { error });
+    throw new Error(
+      `Claude optimization summary failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }

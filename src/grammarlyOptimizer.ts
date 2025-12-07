@@ -9,7 +9,7 @@ import type { AppConfig } from "./config.js";
 import { log } from "./config.js";
 import {
   analyzeTextWithClaude,
-  type RewriterTone,
+  RewriterToneSchema,
   rewriteTextWithClaude,
   summarizeOptimizationWithClaude,
 } from "./llm/claudeClient.js";
@@ -39,10 +39,9 @@ export const ToolInputSchema = z.object({
     .max(20)
     .default(5)
     .describe("Maximum optimization iterations in optimize mode."),
-  tone: z
-    .enum(["neutral", "formal", "informal", "academic", "custom"])
-    .default("neutral")
-    .describe("Desired tone of the final text."),
+  tone: RewriterToneSchema.default("neutral").describe(
+    "Desired tone of the final text.",
+  ),
   domain_hint: z
     .string()
     .max(200)
@@ -88,7 +87,7 @@ export const ToolOutputSchema = z.object({
   notes: z.string().describe("Summary or analysis notes from Claude."),
 });
 
-/** Callback for MCP progress notifications during optimization. */
+/** Callback for MCP progress notifications during optimization (0-100%). */
 export type ProgressCallback = (
   message: string,
   progress?: number,
@@ -96,8 +95,7 @@ export type ProgressCallback = (
 
 export type GrammarlyOptimizeMode = "score_only" | "optimize" | "analyze";
 
-export interface GrammarlyOptimizeInput
-  extends z.infer<typeof ToolInputSchema> {}
+export type GrammarlyOptimizeInput = z.infer<typeof ToolInputSchema>;
 
 export interface HistoryEntry {
   iteration: number;
@@ -121,13 +119,24 @@ function thresholdsMet(
   maxAiPercent: number,
   maxPlagiarismPercent: number,
 ): boolean {
-  if (scores.aiDetectionPercent === null || scores.plagiarismPercent === null) {
+  const aiUnavailable = scores.aiDetectionPercent === null;
+  const plagiarismUnavailable = scores.plagiarismPercent === null;
+
+  if (aiUnavailable && plagiarismUnavailable) {
+    log("warn", "Cannot verify thresholds: both Grammarly scores unavailable");
     return false;
   }
-  return (
-    scores.aiDetectionPercent <= maxAiPercent &&
-    scores.plagiarismPercent <= maxPlagiarismPercent
-  );
+
+  const aiOk =
+    scores.aiDetectionPercent === null
+      ? true
+      : scores.aiDetectionPercent <= maxAiPercent;
+  const plagiarismOk =
+    scores.plagiarismPercent === null
+      ? true
+      : scores.plagiarismPercent <= maxPlagiarismPercent;
+
+  return aiOk && plagiarismOk;
 }
 
 /**
@@ -150,10 +159,9 @@ export async function runGrammarlyOptimization(
     custom_instructions,
   } = input;
 
-  const maxAiPercent = max_ai_percent ?? appConfig.defaultMaxAiPercent;
-  const maxPlagiarismPercent =
-    max_plagiarism_percent ?? appConfig.defaultMaxPlagiarismPercent;
-  const maxIterations = max_iterations ?? appConfig.defaultMaxIterations;
+  const maxAiPercent = max_ai_percent;
+  const maxPlagiarismPercent = max_plagiarism_percent;
+  const maxIterations = max_iterations;
 
   const history: HistoryEntry[] = [];
 
@@ -166,178 +174,198 @@ export async function runGrammarlyOptimization(
   await onProgress?.("Creating Browser Use session...", 5);
 
   const browserUseClient = createBrowserUseClient(appConfig);
-  const sessionId = await createGrammarlySession(browserUseClient, appConfig);
+  let sessionId: string | null = null;
 
-  // Progress: Initial scoring
-  await onProgress?.("Running initial Grammarly scoring...", 10);
-  log("info", "Running initial Grammarly scoring pass");
+  try {
+    sessionId = await createGrammarlySession(browserUseClient, appConfig);
 
-  // Initial scoring (iteration 0).
-  lastScores = await runGrammarlyScoreTask(
-    browserUseClient,
-    sessionId,
-    currentText,
-  );
+    // Progress: Initial scoring
+    await onProgress?.("Running initial Grammarly scoring...", 10);
+    log("info", "Running initial Grammarly scoring pass");
 
-  history.push({
-    iteration: 0,
-    ai_detection_percent: lastScores.aiDetectionPercent,
-    plagiarism_percent: lastScores.plagiarismPercent,
-    note: "Initial Grammarly scores on original text.",
-  });
-
-  if (mode === "score_only") {
-    await onProgress?.("Scoring complete", 100);
-
-    reachedThresholds = thresholdsMet(
-      lastScores,
-      maxAiPercent,
-      maxPlagiarismPercent,
-    );
-
-    const notes = reachedThresholds
-      ? "Score-only run: original text already meets configured AI and plagiarism thresholds."
-      : "Score-only run: thresholds not met or scores unavailable; no rewriting performed.";
-
-    return {
-      final_text: currentText,
-      ai_detection_percent: lastScores.aiDetectionPercent,
-      plagiarism_percent: lastScores.plagiarismPercent,
-      iterations_used: 0,
-      thresholds_met: reachedThresholds,
-      history,
-      notes,
-    };
-  }
-
-  if (mode === "analyze") {
-    await onProgress?.("Analyzing text with Claude...", 50);
-
-    const analysis = await analyzeTextWithClaude(
-      appConfig,
-      currentText,
-      lastScores.aiDetectionPercent,
-      lastScores.plagiarismPercent,
-      maxAiPercent,
-      maxPlagiarismPercent,
-      tone as RewriterTone,
-      domain_hint,
-    );
-
-    reachedThresholds = thresholdsMet(
-      lastScores,
-      maxAiPercent,
-      maxPlagiarismPercent,
-    );
-
-    await onProgress?.("Analysis complete", 100);
-
-    return {
-      final_text: currentText,
-      ai_detection_percent: lastScores.aiDetectionPercent,
-      plagiarism_percent: lastScores.plagiarismPercent,
-      iterations_used: 0,
-      thresholds_met: reachedThresholds,
-      history,
-      notes: analysis,
-    };
-  }
-
-  // Mode: optimize
-  await onProgress?.("Starting optimization loop...", 15);
-  log("info", "Starting optimization loop", {
-    maxIterations,
-    maxAiPercent,
-    maxPlagiarismPercent,
-  });
-
-  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    iterationsUsed = iteration;
-
-    // Progress: Calculate percentage (15-90% for iterations, leaving room for summary)
-    const iterationProgress = 15 + ((iteration - 1) / maxIterations) * 75;
-    await onProgress?.(
-      `Iteration ${iteration}/${maxIterations}: Rewriting with Claude...`,
-      iterationProgress,
-    );
-
-    const rewriteResult = await rewriteTextWithClaude(appConfig, {
-      originalText: currentText,
-      lastAiPercent: lastScores.aiDetectionPercent,
-      lastPlagiarismPercent: lastScores.plagiarismPercent,
-      targetMaxAiPercent: maxAiPercent,
-      targetMaxPlagiarismPercent: maxPlagiarismPercent,
-      tone: tone as RewriterTone,
-      domainHint: domain_hint,
-      customInstructions: custom_instructions,
-      maxIterations,
-    });
-
-    currentText = rewriteResult.rewrittenText;
-
-    // Progress: Re-scoring
-    const scoringProgress = 15 + ((iteration - 0.5) / maxIterations) * 75;
-    await onProgress?.(
-      `Iteration ${iteration}/${maxIterations}: Re-scoring with Grammarly...`,
-      scoringProgress,
-    );
-
-    // Re-score the new candidate in the same session.
+    // Baseline scoring (iteration 0 before optimization loop).
     lastScores = await runGrammarlyScoreTask(
       browserUseClient,
       sessionId,
       currentText,
-    );
-
-    reachedThresholds = thresholdsMet(
-      lastScores,
-      maxAiPercent,
-      maxPlagiarismPercent,
+      appConfig,
     );
 
     history.push({
-      iteration,
+      iteration: 0,
       ai_detection_percent: lastScores.aiDetectionPercent,
       plagiarism_percent: lastScores.plagiarismPercent,
-      note: rewriteResult.reasoning,
+      note: "Baseline Grammarly scores on original text (iteration 0).",
     });
 
-    log("info", "Optimization iteration completed", {
-      iteration,
-      aiDetectionPercent: lastScores.aiDetectionPercent,
-      plagiarismPercent: lastScores.plagiarismPercent,
+    if (mode === "score_only") {
+      await onProgress?.("Scoring complete", 100);
+
+      reachedThresholds = thresholdsMet(
+        lastScores,
+        maxAiPercent,
+        maxPlagiarismPercent,
+      );
+
+      const notes = reachedThresholds
+        ? "Score-only run: original text already meets configured AI and plagiarism thresholds."
+        : "Score-only run: thresholds not met or scores unavailable; no rewriting performed.";
+
+      return {
+        final_text: currentText,
+        ai_detection_percent: lastScores.aiDetectionPercent,
+        plagiarism_percent: lastScores.plagiarismPercent,
+        iterations_used: 0,
+        thresholds_met: reachedThresholds,
+        history,
+        notes,
+      };
+    }
+
+    if (mode === "analyze") {
+      await onProgress?.("Analyzing text with Claude...", 50);
+
+      const analysis = await analyzeTextWithClaude(
+        appConfig,
+        currentText,
+        lastScores.aiDetectionPercent,
+        lastScores.plagiarismPercent,
+        maxAiPercent,
+        maxPlagiarismPercent,
+        tone,
+        domain_hint,
+      );
+
+      reachedThresholds = thresholdsMet(
+        lastScores,
+        maxAiPercent,
+        maxPlagiarismPercent,
+      );
+
+      await onProgress?.("Analysis complete", 100);
+
+      return {
+        final_text: currentText,
+        ai_detection_percent: lastScores.aiDetectionPercent,
+        plagiarism_percent: lastScores.plagiarismPercent,
+        iterations_used: 0,
+        thresholds_met: reachedThresholds,
+        history,
+        notes: analysis,
+      };
+    }
+
+    // Mode: optimize
+    await onProgress?.("Starting optimization loop...", 15);
+    log("info", "Starting optimization loop", {
+      maxIterations,
+      maxAiPercent,
+      maxPlagiarismPercent,
+    });
+
+    for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+      iterationsUsed = iteration;
+
+      // Progress is iteration-based (not wall clock): 15–85% reserved for loop.
+      const iterationProgress = 15 + ((iteration - 1) / maxIterations) * 70;
+      await onProgress?.(
+        `Iteration ${iteration}/${maxIterations}: Rewriting with Claude...`,
+        iterationProgress,
+      );
+
+      const rewriteResult = await rewriteTextWithClaude(appConfig, {
+        originalText: currentText,
+        lastAiPercent: lastScores.aiDetectionPercent,
+        lastPlagiarismPercent: lastScores.plagiarismPercent,
+        targetMaxAiPercent: maxAiPercent,
+        targetMaxPlagiarismPercent: maxPlagiarismPercent,
+        tone,
+        domainHint: domain_hint,
+        customInstructions: custom_instructions,
+        maxIterations,
+      });
+
+      currentText = rewriteResult.rewrittenText;
+
+      // Progress: Re-scoring for this iteration.
+      const scoringProgress = 15 + (iteration / maxIterations) * 70;
+      await onProgress?.(
+        `Iteration ${iteration}/${maxIterations}: Re-scoring with Grammarly...`,
+        scoringProgress,
+      );
+
+      // Re-score the new candidate in the same session.
+      lastScores = await runGrammarlyScoreTask(
+        browserUseClient,
+        sessionId,
+        currentText,
+        appConfig,
+      );
+
+      reachedThresholds = thresholdsMet(
+        lastScores,
+        maxAiPercent,
+        maxPlagiarismPercent,
+      );
+
+      history.push({
+        iteration,
+        ai_detection_percent: lastScores.aiDetectionPercent,
+        plagiarism_percent: lastScores.plagiarismPercent,
+        note: rewriteResult.reasoning,
+      });
+
+      log("info", "Optimization iteration completed", {
+        iteration,
+        aiDetectionPercent: lastScores.aiDetectionPercent,
+        plagiarismPercent: lastScores.plagiarismPercent,
+        thresholdsMet: reachedThresholds,
+      });
+
+      if (reachedThresholds) {
+        break;
+      }
+    }
+
+    // Progress: Generating summary
+    await onProgress?.("Generating optimization summary...", 92);
+
+    // Final summary via Claude (optional but useful).
+    const notes = await summarizeOptimizationWithClaude(appConfig, {
+      mode,
+      iterationsUsed,
       thresholdsMet: reachedThresholds,
+      history,
+      finalText: currentText,
+      maxAiPercent,
+      maxPlagiarismPercent,
     });
 
-    if (reachedThresholds) {
-      break;
+    // Progress: Complete
+    await onProgress?.("Optimization complete", 100);
+
+    return {
+      final_text: currentText,
+      ai_detection_percent: lastScores.aiDetectionPercent,
+      plagiarism_percent: lastScores.plagiarismPercent,
+      iterations_used: iterationsUsed,
+      thresholds_met: reachedThresholds,
+      history,
+      notes,
+    };
+  } finally {
+    if (sessionId) {
+      try {
+        await browserUseClient.sessions.deleteSession({
+          session_id: sessionId,
+        });
+        log("debug", "Browser Use session closed", { sessionId });
+      } catch (error) {
+        log("warn", "Failed to close Browser Use session", {
+          sessionId,
+          error,
+        });
+      }
     }
   }
-
-  // Progress: Generating summary
-  await onProgress?.("Generating optimization summary...", 92);
-
-  // Final summary via Claude (optional but useful).
-  const notes = await summarizeOptimizationWithClaude(appConfig, {
-    mode,
-    iterationsUsed,
-    thresholdsMet: reachedThresholds,
-    history,
-    finalText: currentText,
-    maxAiPercent,
-    maxPlagiarismPercent,
-  });
-
-  // Progress: Complete
-  await onProgress?.("Optimization complete", 100);
-
-  return {
-    final_text: currentText,
-    ai_detection_percent: lastScores.aiDetectionPercent,
-    plagiarism_percent: lastScores.plagiarismPercent,
-    iterations_used: iterationsUsed,
-    thresholds_met: reachedThresholds,
-    history,
-    notes,
-  };
 }

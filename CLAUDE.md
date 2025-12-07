@@ -17,7 +17,7 @@ pnpm check-all      # Run type-check && biome:check
 
 Single-tool MCP server that orchestrates text optimization through three integrations:
 
-```
+```text
 MCP Server (stdio transport)
     └── grammarly_optimize_text tool
             │
@@ -44,7 +44,7 @@ MCP Server (stdio transport)
 - **Logging**: All logs go to stderr via `log()` from config.ts. Stdout is reserved for MCP JSON-RPC.
 - **Zod schemas**: Input/output validation at tool boundaries. Types inferred from schemas.
 - **Browser automation**: Uses natural language prompts, not CSS selectors. Browser Use agent interprets instructions.
-- **Model selection**: Claude Sonnet by default; Opus for long texts (>3000 chars) or many iterations (>3).
+- **Model selection**: Claude Sonnet by default; Opus for very long inputs (>12,000 chars ≈ 8–9k tokens) or heavier loops (>8 iterations).
 - **Null scores**: Grammarly features may return `null` if not available (no Premium). Handle gracefully.
 
 ## Environment Variables
@@ -52,6 +52,7 @@ MCP Server (stdio transport)
 Required:
 - `BROWSER_USE_API_KEY` - API key from cloud.browser-use.com
 - `BROWSER_USE_PROFILE_ID` - Synced profile with Grammarly login state
+- `CLAUDE_API_KEY` - Anthropic Claude Code API key for rewrite/analysis
 
 Optional:
 - `LOG_LEVEL` - debug | info | warn | error (default: info)

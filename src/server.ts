@@ -59,7 +59,9 @@ async function main(): Promise<void> {
         max_iterations: parsed.max_iterations,
       });
 
-      // Create progress callback for MCP progress notifications
+      // Create progress callback for MCP progress notifications.
+      // NOTE: `extra._meta?.progressToken` is currently the available hook in the SDK;
+      // if a public progress token accessor is added, prefer that instead.
       const progressToken = extra._meta?.progressToken;
       const onProgress: ProgressCallback = async (message, progress) => {
         if (extra.sendNotification && progressToken) {
@@ -81,9 +83,10 @@ async function main(): Promise<void> {
       };
 
       const result = await runGrammarlyOptimization(config, parsed, onProgress);
+      const validatedOutput = ToolOutputSchema.parse(result);
 
       // Return both text content (for compatibility) and structured content (MCP 2025-11-25)
-      const textSummary = JSON.stringify(result, null, 2);
+      const textSummary = JSON.stringify(validatedOutput, null, 2);
 
       return {
         content: [
@@ -92,7 +95,7 @@ async function main(): Promise<void> {
             text: textSummary,
           },
         ],
-        structuredContent: result as unknown as Record<string, unknown>,
+        structuredContent: validatedOutput,
       };
     },
   );
@@ -107,9 +110,12 @@ async function main(): Promise<void> {
 // Top-level await is supported in Node 18+ ESM.
 void main().catch((error: unknown) => {
   if (error instanceof Error) {
-    console.error("[grammarly-mcp:fatal]", error.message, error.stack);
+    log("error", "[grammarly-mcp:fatal]", {
+      message: error.message,
+      stack: error.stack,
+    });
   } else {
-    console.error("[grammarly-mcp:fatal] Unknown error", error);
+    log("error", "[grammarly-mcp:fatal] Unknown error", { error });
   }
   process.exit(1);
 });

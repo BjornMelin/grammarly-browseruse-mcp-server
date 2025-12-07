@@ -5,6 +5,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 export interface AppConfig {
   browserUseApiKey: string;
   browserUseProfileId: string;
+  claudeApiKey: string;
   logLevel: LogLevel;
   browserUseDefaultTimeoutMs: number;
   defaultMaxAiPercent: number;
@@ -19,10 +20,10 @@ const EnvSchema = z.object({
   BROWSER_USE_PROFILE_ID: z
     .string()
     .min(1, "BROWSER_USE_PROFILE_ID is required for Grammarly profile"),
-  LOG_LEVEL: z
-    .enum(["debug", "info", "warn", "error"])
-    .default("info")
-    .optional(),
+  CLAUDE_API_KEY: z
+    .string()
+    .min(1, "CLAUDE_API_KEY is required for Claude Code"),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -43,7 +44,8 @@ const env = parsed.data;
 export const config: AppConfig = {
   browserUseApiKey: env.BROWSER_USE_API_KEY,
   browserUseProfileId: env.BROWSER_USE_PROFILE_ID,
-  logLevel: env.LOG_LEVEL ?? "info",
+  claudeApiKey: env.CLAUDE_API_KEY,
+  logLevel: env.LOG_LEVEL,
   browserUseDefaultTimeoutMs: 5 * 60 * 1000,
   defaultMaxAiPercent: 10,
   defaultMaxPlagiarismPercent: 5,

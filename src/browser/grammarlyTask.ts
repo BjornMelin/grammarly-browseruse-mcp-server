@@ -30,7 +30,7 @@ export const GrammarlyScoresSchema = z.object({
 
 export type GrammarlyScores = z.infer<typeof GrammarlyScoresSchema>;
 
-export interface GrammarlyScoreTaskResult extends GrammarlyScores {}
+export type GrammarlyScoreTaskResult = GrammarlyScores;
 
 /**
  * Build the natural-language prompt instructing Browser Use to open Grammarly,
@@ -38,11 +38,11 @@ export interface GrammarlyScoreTaskResult extends GrammarlyScores {}
  */
 function buildGrammarlyTaskPrompt(text: string): string {
   return [
-    "You are controlling a real browser that is already logged into a Grammarly or Superhuman account.",
+    "You are controlling a real browser that is already logged into a Grammarly account.",
     "",
     "Goal:",
-    "1. Open the Grammarly docs writing surface at https://app.grammarly.com (or the equivalent docs surface if already open).",
-    "2. Create a new document (not a classic doc).",
+    "1. Open the Grammarly docs writing surface at https://app.grammarly.com (or, if you are already on https://app.grammarly.com with a document open, you may use that).",
+    "2. Create a new document (avoid the legacy classic editor).",
     "3. Paste the provided text exactly into the main editor area.",
     "4. Use Grammarly's AI Detector and Plagiarism Checker agents in the right-hand panel,",
     "   or the 'Check for AI text & plagiarism' control, to obtain:",
@@ -107,20 +107,26 @@ export async function runGrammarlyScoreTask(
   client: BrowserUseClient,
   sessionId: string,
   text: string,
+  appConfig: AppConfig,
 ): Promise<GrammarlyScoreTaskResult> {
   const taskPrompt = buildGrammarlyTaskPrompt(text);
 
   log("info", "Starting Browser Use Grammarly scoring task");
 
   try {
-    const task = await client.tasks.createTask({
-      sessionId,
-      llm: "browser-use-llm",
-      task: taskPrompt,
-      schema: GrammarlyScoresSchema,
-    });
+    const task = await client.tasks.createTask(
+      {
+        sessionId,
+        llm: "browser-use-llm",
+        task: taskPrompt,
+        schema: GrammarlyScoresSchema,
+      } as unknown as Parameters<typeof client.tasks.createTask>[0],
+      {
+        timeoutInSeconds: appConfig.browserUseDefaultTimeoutMs / 1000,
+      },
+    );
 
-    const result = await task.complete();
+    const result = (await task.complete()) as { parsed?: unknown };
 
     if (!result || !result.parsed) {
       log("error", "Browser Use result missing parsed structured output", {
@@ -129,7 +135,15 @@ export async function runGrammarlyScoreTask(
       throw new Error("Browser Use task did not return structured scores");
     }
 
-    const scores = result.parsed as GrammarlyScoreTaskResult;
+    const parsedScores = GrammarlyScoresSchema.safeParse(result.parsed);
+    if (!parsedScores.success) {
+      log("error", "Browser Use returned invalid score structure", {
+        errors: parsedScores.error.flatten(),
+      });
+      throw new Error("Browser Use task returned invalid score structure");
+    }
+
+    const scores: GrammarlyScoreTaskResult = parsedScores.data;
 
     log("info", "Received Grammarly scores from Browser Use", {
       aiDetectionPercent: scores.aiDetectionPercent,
