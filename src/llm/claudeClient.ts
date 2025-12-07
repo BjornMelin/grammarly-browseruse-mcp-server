@@ -276,12 +276,31 @@ export async function analyzeTextWithClaude(
 
   log("info", "Calling Claude for analysis", { modelId });
 
+  const timeoutMs = appConfig.claudeRequestTimeoutMs;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
   try {
-    const result = await generateObject({
-      model,
-      schema: AnalysisSchema,
-      prompt,
-    });
+    const result = await Promise.race([
+      generateObject({
+        model,
+        schema: AnalysisSchema,
+        prompt,
+      }),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          log("error", "Claude analysis timed out", {
+            modelId,
+            timeoutMs,
+            promptPreview: prompt.slice(0, 500),
+          });
+          reject(
+            new Error(
+              `Claude analysis request exceeded timeout of ${timeoutMs}ms`,
+            ),
+          );
+        }, timeoutMs);
+      }),
+    ]);
 
     return result.object.analysis;
   } catch (error: unknown) {
@@ -289,6 +308,10 @@ export async function analyzeTextWithClaude(
     throw new Error(
       `Claude analysis failed: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -313,6 +336,9 @@ export async function summarizeOptimizationWithClaude(
   const modelId = chooseClaudeModel(summaryInput.finalText.length, 1);
   logAuthMethod(appConfig.claudeApiKey);
   const model = claudeCode(modelId);
+
+  const timeoutMs = appConfig.claudeRequestTimeoutMs;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   const prompt = [
     "You are summarizing the outcome of a Grammarly-based AI detection and plagiarism optimization run.",
@@ -341,10 +367,26 @@ export async function summarizeOptimizationWithClaude(
   log("debug", "Calling Claude for optimization summary", { modelId });
 
   try {
-    const result = await generateText({
-      model,
-      prompt,
-    });
+    const result = await Promise.race([
+      generateText({
+        model,
+        prompt,
+      }),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          log("error", "Claude optimization summary timed out", {
+            modelId,
+            timeoutMs,
+            promptPreview: prompt.slice(0, 500),
+          });
+          reject(
+            new Error(
+              `Claude optimization summary request exceeded timeout of ${timeoutMs}ms`,
+            ),
+          );
+        }, timeoutMs);
+      }),
+    ]);
 
     return result.text;
   } catch (error: unknown) {
@@ -352,5 +394,9 @@ export async function summarizeOptimizationWithClaude(
     throw new Error(
       `Claude optimization summary failed: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }

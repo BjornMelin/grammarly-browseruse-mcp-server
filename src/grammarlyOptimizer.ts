@@ -1,4 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { BrowserUse } from "browser-use-sdk";
 import { type ZodType, z } from "zod";
 import {
   createBrowserUseClient,
@@ -366,8 +367,9 @@ export async function runGrammarlyOptimization(
   } finally {
     if (sessionId) {
       try {
-        // Browser Use SDK expects a request object with session_id, not a bare string.
-        await browserUseClient.sessions.deleteSession({ session_id: sessionId });
+        await browserUseClient.sessions.deleteSession(
+          sessionId as unknown as BrowserUse.DeleteSessionSessionsSessionIdDeleteRequest,
+        );
         log("debug", "Browser Use session closed", { sessionId });
       } catch (error) {
         log("warn", "Failed to close Browser Use session", {
