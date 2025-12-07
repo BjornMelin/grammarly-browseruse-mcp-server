@@ -91,7 +91,7 @@ function formatAsMarkdown(result: GrammarlyOptimizeResult): string {
 async function main(): Promise<void> {
   const server = new McpServer(
     {
-      name: "grammarly-browseruse-mcp-server",
+      name: "grammarly-mcp",
       version: "0.1.0",
     },
     {

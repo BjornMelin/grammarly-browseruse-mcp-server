@@ -174,6 +174,9 @@ function buildGrammarlyTaskPrompt(text: string): string {
 
 /** Create a BrowserUseClient configured with the app's API key. */
 export function createBrowserUseClient(appConfig: AppConfig): BrowserUseClient {
+  if (!appConfig.browserUseApiKey) {
+    throw new Error("BROWSER_USE_API_KEY is required for Browser Use provider");
+  }
   return new BrowserUseClient({
     apiKey: appConfig.browserUseApiKey,
   });
@@ -185,6 +188,11 @@ export async function createGrammarlySession(
   appConfig: AppConfig,
   options?: GrammarlySessionOptions,
 ): Promise<GrammarlySessionResult> {
+  if (!appConfig.browserUseProfileId) {
+    throw new Error(
+      "BROWSER_USE_PROFILE_ID is required for Browser Use provider",
+    );
+  }
   log("debug", "Creating Browser Use session with synced profile", {
     proxyCountryCode: options?.proxyCountryCode,
   });
