@@ -366,9 +366,8 @@ export async function runGrammarlyOptimization(
   } finally {
     if (sessionId) {
       try {
-        await browserUseClient.sessions.deleteSession({
-          session_id: sessionId,
-        });
+        // Browser Use SDK expects a request object with session_id, not a bare string.
+        await browserUseClient.sessions.deleteSession({ session_id: sessionId });
         log("debug", "Browser Use session closed", { sessionId });
       } catch (error) {
         log("warn", "Failed to close Browser Use session", {

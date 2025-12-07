@@ -67,15 +67,19 @@ async function main(): Promise<void> {
       type ProgressTokenCarrier = {
         getProgressToken?: () => unknown;
         progressToken?: unknown;
+        meta?: { progressToken?: unknown };
+        /** legacy/private hook */
+        // biome-ignore lint/style/useNamingConvention: external SDK uses _meta for request metadata
         _meta?: { progressToken?: unknown };
       };
       const progressTokenCarrier = extra as unknown as ProgressTokenCarrier;
       const progressTokenCandidate =
         typeof progressTokenCarrier.getProgressToken === "function"
           ? progressTokenCarrier.getProgressToken()
-          : progressTokenCarrier.progressToken ??
+          : (progressTokenCarrier.progressToken ??
+            progressTokenCarrier.meta?.progressToken ??
             // Legacy/private path: keep guarded to avoid hard-coupling to internals.
-            progressTokenCarrier._meta?.progressToken;
+            progressTokenCarrier._meta?.progressToken);
       const progressToken =
         typeof progressTokenCandidate === "string" ||
         typeof progressTokenCandidate === "number"
