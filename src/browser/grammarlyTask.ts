@@ -3,9 +3,7 @@ import { z } from "zod";
 import type { AppConfig } from "../config.js";
 import { log } from "../config.js";
 
-/**
- * Structured scores as extracted by Browser Use from Grammarly's UI.
- */
+/** Grammarly AI detection and plagiarism scores from Browser Use. */
 export const GrammarlyScoresSchema = z.object({
   aiDetectionPercent: z
     .number()
@@ -13,7 +11,7 @@ export const GrammarlyScoresSchema = z.object({
     .max(100)
     .nullable()
     .describe(
-      "Overall AI-generated percentage as shown by Grammarly's AI Detector."
+      "Overall AI-generated percentage as shown by Grammarly's AI Detector.",
     ),
   plagiarismPercent: z
     .number()
@@ -21,13 +19,13 @@ export const GrammarlyScoresSchema = z.object({
     .max(100)
     .nullable()
     .describe(
-      "Overall plagiarism / originality percentage from Grammarly's Plagiarism Checker."
+      "Overall plagiarism / originality percentage from Grammarly's Plagiarism Checker.",
     ),
   notes: z
     .string()
     .describe(
-      "Free-text notes about what was seen in the UI, including any warnings."
-    )
+      "Free-text notes about what was seen in the UI, including any warnings.",
+    ),
 });
 
 export type GrammarlyScores = z.infer<typeof GrammarlyScoresSchema>;
@@ -35,14 +33,8 @@ export type GrammarlyScores = z.infer<typeof GrammarlyScoresSchema>;
 export interface GrammarlyScoreTaskResult extends GrammarlyScores {}
 
 /**
- * Build the natural-language task for Browser Use.
- *
- * The agent is expected to:
- * - Open Grammarly docs.
- * - Create a new document.
- * - Paste the provided text.
- * - Use AI Detector + Plagiarism Checker.
- * - Extract overall AI and plagiarism percentages.
+ * Build the natural-language prompt instructing Browser Use to open Grammarly,
+ * paste the text, run AI Detector + Plagiarism Checker, and return scores.
  */
 function buildGrammarlyTaskPrompt(text: string): string {
   return [
@@ -69,32 +61,26 @@ function buildGrammarlyTaskPrompt(text: string): string {
     "User text to evaluate (paste exactly as shown between markers):",
     "<START_USER_TEXT>",
     text,
-    "<END_USER_TEXT>"
+    "<END_USER_TEXT>",
   ].join("\n");
 }
 
-/**
- * Factory for a BrowserUseClient bound to our API key.
- */
+/** Create a BrowserUseClient configured with the app's API key. */
 export function createBrowserUseClient(appConfig: AppConfig): BrowserUseClient {
   return new BrowserUseClient({
-    apiKey: appConfig.browserUseApiKey
+    apiKey: appConfig.browserUseApiKey,
   });
 }
 
-/**
- * Create an authenticated session using a synced Browser Use profile.
- *
- * The profile contains the Grammarly/Superhuman login state.
- */
+/** Create a Browser Use session using the synced Grammarly profile. */
 export async function createGrammarlySession(
   client: BrowserUseClient,
-  appConfig: AppConfig
+  appConfig: AppConfig,
 ): Promise<string> {
   log("debug", "Creating Browser Use session with synced profile");
   try {
     const session = await client.sessions.createSession({
-      profileId: appConfig.browserUseProfileId
+      profileId: appConfig.browserUseProfileId,
     });
 
     if (!session || typeof session.id !== "string") {
@@ -106,7 +92,7 @@ export async function createGrammarlySession(
   } catch (error: unknown) {
     if (error instanceof Error) {
       log("error", "Failed to create Browser Use session", {
-        message: error.message
+        message: error.message,
       });
       throw error;
     }
@@ -116,14 +102,11 @@ export async function createGrammarlySession(
   }
 }
 
-/**
- * Run a Browser Use task that drives Grammarly's docs UI to compute AI and
- * plagiarism scores for the given text.
- */
+/** Execute Browser Use task to score text via Grammarly's AI Detector. */
 export async function runGrammarlyScoreTask(
   client: BrowserUseClient,
   sessionId: string,
-  text: string
+  text: string,
 ): Promise<GrammarlyScoreTaskResult> {
   const taskPrompt = buildGrammarlyTaskPrompt(text);
 
@@ -134,14 +117,14 @@ export async function runGrammarlyScoreTask(
       sessionId,
       llm: "browser-use-llm",
       task: taskPrompt,
-      schema: GrammarlyScoresSchema
+      schema: GrammarlyScoresSchema,
     });
 
     const result = await task.complete();
 
     if (!result || !result.parsed) {
       log("error", "Browser Use result missing parsed structured output", {
-        resultSummary: result ? Object.keys(result) : "no-result"
+        resultSummary: result ? Object.keys(result) : "no-result",
       });
       throw new Error("Browser Use task did not return structured scores");
     }
@@ -150,14 +133,14 @@ export async function runGrammarlyScoreTask(
 
     log("info", "Received Grammarly scores from Browser Use", {
       aiDetectionPercent: scores.aiDetectionPercent,
-      plagiarismPercent: scores.plagiarismPercent
+      plagiarismPercent: scores.plagiarismPercent,
     });
 
     return scores;
   } catch (error: unknown) {
     if (error instanceof Error) {
       log("error", "Browser Use Grammarly scoring task failed", {
-        message: error.message
+        message: error.message,
       });
       throw error;
     }
@@ -165,7 +148,7 @@ export async function runGrammarlyScoreTask(
     log(
       "error",
       "Browser Use Grammarly scoring task failed with unknown error",
-      error
+      error,
     );
     throw new Error("Browser Use Grammarly scoring task failed");
   }

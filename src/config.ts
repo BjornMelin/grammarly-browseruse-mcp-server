@@ -22,7 +22,7 @@ const EnvSchema = z.object({
   LOG_LEVEL: z
     .enum(["debug", "info", "warn", "error"])
     .default("info")
-    .optional()
+    .optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -32,7 +32,7 @@ if (!parsed.success) {
   // Exiting early avoids a half-configured server.
   console.error(
     "[grammarly-mcp:error] Invalid environment configuration",
-    JSON.stringify(parsed.error.format(), null, 2)
+    JSON.stringify(parsed.error.format(), null, 2),
   );
   process.exit(1);
 }
@@ -47,7 +47,7 @@ export const config: AppConfig = {
   browserUseDefaultTimeoutMs: 5 * 60 * 1000,
   defaultMaxAiPercent: 10,
   defaultMaxPlagiarismPercent: 5,
-  defaultMaxIterations: 5
+  defaultMaxIterations: 5,
 };
 
 const LOG_LEVELS: LogLevel[] = ["debug", "info", "warn", "error"];
@@ -57,11 +57,7 @@ const LOG_LEVELS: LogLevel[] = ["debug", "info", "warn", "error"];
  *
  * MCP JSON-RPC frames must go to stdout only.
  */
-export function log(
-  level: LogLevel,
-  message: string,
-  extra?: unknown
-): void {
+export function log(level: LogLevel, message: string, extra?: unknown): void {
   const configuredIndex = LOG_LEVELS.indexOf(config.logLevel);
   const levelIndex = LOG_LEVELS.indexOf(level);
 

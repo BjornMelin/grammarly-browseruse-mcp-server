@@ -33,21 +33,21 @@ const RewriteSchema = z.object({
   reasoning: z
     .string()
     .describe(
-      "Short explanation of modifications and strategies used to reduce AI and plagiarism scores."
-    )
+      "Short explanation of modifications and strategies used to reduce AI and plagiarism scores.",
+    ),
 });
 
 const AnalysisSchema = z.object({
   analysis: z
     .string()
     .describe(
-      "Concise analysis of AI detection and plagiarism risk and suggestions for improvement."
-    )
+      "Concise analysis of AI detection and plagiarism risk and suggestions for improvement.",
+    ),
 });
 
 function chooseClaudeModel(
   textLength: number,
-  maxIterations: number
+  maxIterations: number,
 ): "sonnet" | "opus" {
   // Heuristic: use opus for very long texts or many iterations.
   if (textLength > 12000 || maxIterations > 8) {
@@ -56,13 +56,10 @@ function chooseClaudeModel(
   return "sonnet";
 }
 
-/**
- * Rewrite text with Claude (via Vercel AI SDK + claude-code provider)
- * to reduce AI detection and plagiarism while preserving meaning.
- */
+/** Rewrite text with Claude to reduce AI detection and plagiarism. */
 export async function rewriteTextWithClaude(
-  appConfig: AppConfig,
-  params: RewriteParams
+  _appConfig: AppConfig,
+  params: RewriteParams,
 ): Promise<RewriteResult> {
   const {
     originalText,
@@ -73,7 +70,7 @@ export async function rewriteTextWithClaude(
     tone,
     domainHint,
     customInstructions,
-    maxIterations
+    maxIterations,
   } = params;
 
   const modelId = chooseClaudeModel(originalText.length, maxIterations);
@@ -84,9 +81,7 @@ export async function rewriteTextWithClaude(
       ? "Use a natural human tone guided by the custom instructions."
       : `Use a ${tone} tone that feels like a human wrote it.`;
 
-  const domainText = domainHint
-    ? `Domain: ${domainHint.trim()}.\n`
-    : "";
+  const domainText = domainHint ? `Domain: ${domainHint.trim()}.\n` : "";
 
   const lastAiText =
     lastAiPercent === null
@@ -100,7 +95,7 @@ export async function rewriteTextWithClaude(
 
   const targetText = [
     `Target: AI detection ≤ ${targetMaxAiPercent}%`,
-    `Target: plagiarism ≤ ${targetMaxPlagiarismPercent}%`
+    `Target: plagiarism ≤ ${targetMaxPlagiarismPercent}%`,
   ].join(", ");
 
   const customText = customInstructions
@@ -120,7 +115,7 @@ export async function rewriteTextWithClaude(
     domainText,
     lastAiText,
     lastPlagiarismText,
-    targetText + ".",
+    `${targetText}.`,
     "",
     toneDescription,
     customText,
@@ -141,7 +136,7 @@ export async function rewriteTextWithClaude(
     "Original text:",
     "-----",
     originalText,
-    "-----"
+    "-----",
   ].join("\n");
 
   log("info", "Calling Claude for rewrite", { modelId });
@@ -149,7 +144,7 @@ export async function rewriteTextWithClaude(
   const result = await generateObject({
     model,
     schema: RewriteSchema,
-    prompt
+    prompt,
   });
 
   const object = result.object;
@@ -157,22 +152,20 @@ export async function rewriteTextWithClaude(
   log("debug", "Claude rewrite completed");
   return {
     rewrittenText: object.rewrittenText,
-    reasoning: object.reasoning
+    reasoning: object.reasoning,
   };
 }
 
-/**
- * Ask Claude for an analysis-only view of AI/plagiarism risk and style.
- */
+/** Analyze text for AI detection and plagiarism risk with Claude. */
 export async function analyzeTextWithClaude(
-  appConfig: AppConfig,
+  _appConfig: AppConfig,
   text: string,
   aiPercent: number | null,
   plagiarismPercent: number | null,
   targetMaxAiPercent: number,
   targetMaxPlagiarismPercent: number,
   tone: RewriterTone,
-  domainHint?: string
+  domainHint?: string,
 ): Promise<string> {
   const modelId = chooseClaudeModel(text.length, 1);
   const model = claudeCode(modelId);
@@ -189,7 +182,7 @@ export async function analyzeTextWithClaude(
 
   const targetText = [
     `Target AI detection ≤ ${targetMaxAiPercent}%`,
-    `Target plagiarism ≤ ${targetMaxPlagiarismPercent}%`
+    `Target plagiarism ≤ ${targetMaxPlagiarismPercent}%`,
   ].join(", ");
 
   const domainText = domainHint
@@ -202,7 +195,7 @@ export async function analyzeTextWithClaude(
     "",
     aiText,
     plagText,
-    targetText + ".",
+    `${targetText}.`,
     domainText,
     `Desired tone: ${tone}.`,
     "",
@@ -219,7 +212,7 @@ export async function analyzeTextWithClaude(
     "Text to analyze:",
     "-----",
     text,
-    "-----"
+    "-----",
   ].join("\n");
 
   log("info", "Calling Claude for analysis", { modelId });
@@ -227,17 +220,15 @@ export async function analyzeTextWithClaude(
   const result = await generateObject({
     model,
     schema: AnalysisSchema,
-    prompt
+    prompt,
   });
 
   return result.object.analysis;
 }
 
-/**
- * Summarize an optimization run with Claude into user-facing notes.
- */
+/** Generate a user-facing summary of the optimization run with Claude. */
 export async function summarizeOptimizationWithClaude(
-  appConfig: AppConfig,
+  _appConfig: AppConfig,
   summaryInput: {
     mode: "score_only" | "optimize" | "analyze";
     iterationsUsed: number;
@@ -251,7 +242,7 @@ export async function summarizeOptimizationWithClaude(
     finalText: string;
     maxAiPercent: number;
     maxPlagiarismPercent: number;
-  }
+  },
 ): Promise<string> {
   const modelId = chooseClaudeModel(summaryInput.finalText.length, 1);
   const model = claudeCode(modelId);
@@ -277,14 +268,14 @@ export async function summarizeOptimizationWithClaude(
     "- A bullet list of the most important changes made across iterations.",
     "- A note if scores are missing or thresholds were not met.",
     "",
-    "Keep the response under 250 words."
+    "Keep the response under 250 words.",
   ].join("\n");
 
   log("debug", "Calling Claude for optimization summary", { modelId });
 
   const result = await generateText({
     model,
-    prompt
+    prompt,
   });
 
   return result.text;

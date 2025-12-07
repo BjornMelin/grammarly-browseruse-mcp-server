@@ -3,11 +3,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { config, log } from "./config.js";
 import {
+  type GrammarlyOptimizeInput,
+  type ProgressCallback,
+  runGrammarlyOptimization,
   ToolInputSchema,
   ToolOutputSchema,
-  runGrammarlyOptimization,
-  type GrammarlyOptimizeInput,
-  type ProgressCallback
 } from "./grammarlyOptimizer.js";
 
 /**
@@ -24,13 +24,13 @@ async function main(): Promise<void> {
   const server = new McpServer(
     {
       name: "grammarly-browseruse-mcp-server",
-      version: "0.1.0"
+      version: "0.1.0",
     },
     {
       capabilities: {
-        logging: {}
-      }
-    }
+        logging: {},
+      },
+    },
   );
 
   server.registerTool(
@@ -46,8 +46,8 @@ async function main(): Promise<void> {
         readOnlyHint: false, // Tool can rewrite text
         destructiveHint: false, // Non-destructive (original preserved in input)
         idempotentHint: false, // Each run may produce different results
-        openWorldHint: true // Interacts with Grammarly and Claude APIs
-      }
+        openWorldHint: true, // Interacts with Grammarly and Claude APIs
+      },
     },
     async (args, extra) => {
       const parsed = ToolInputSchema.parse(args) as GrammarlyOptimizeInput;
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
         mode: parsed.mode,
         max_ai_percent: parsed.max_ai_percent,
         max_plagiarism_percent: parsed.max_plagiarism_percent,
-        max_iterations: parsed.max_iterations
+        max_iterations: parsed.max_iterations,
       });
 
       // Create progress callback for MCP progress notifications
@@ -70,8 +70,8 @@ async function main(): Promise<void> {
                 progressToken,
                 progress: progress ?? 0,
                 total: 100,
-                message
-              }
+                message,
+              },
             });
           } catch {
             // Progress notifications are optional; ignore failures
@@ -89,12 +89,12 @@ async function main(): Promise<void> {
         content: [
           {
             type: "text",
-            text: textSummary
-          }
+            text: textSummary,
+          },
         ],
-        structuredContent: result as unknown as Record<string, unknown>
+        structuredContent: result as unknown as Record<string, unknown>,
       };
-    }
+    },
   );
 
   const transport = new StdioServerTransport();

@@ -11,7 +11,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "biome:check": "biome check .",
+    "biome:fix": "biome check --write .",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check-all": "pnpm type-check && pnpm biome:check"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -24,6 +29,7 @@
     "zod": "^3.25.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.3.8",
     "@types/node": "^20.14.0",
     "typescript": "^5.6.0"
   }
