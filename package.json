@@ -1,7 +1,7 @@
 {
-  "name": "grammarly-browseruse-mcp-server",
+  "name": "grammarly-mcp",
   "version": "0.1.0",
-  "description": "MCP server: Grammarly AI detection + plagiarism scoring + Claude-based rewriting via Browser Use Cloud.",
+  "description": "MCP server for Grammarly AI detection and plagiarism scoring via Stagehand + Browserbase browser automation.",
   "private": true,
   "type": "module",
   "main": "dist/server.js",
@@ -16,12 +16,23 @@
     "biome:fix": "biome check --write .",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "check-all": "pnpm type-check && pnpm biome:check"
+    "check-all": "pnpm type-check && pnpm biome:check",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration --pool=forks",
+    "test:ci": "vitest run --coverage --reporter=json --reporter=default"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.53",
+    "@ai-sdk/google": "^2.0.44",
+    "@ai-sdk/openai": "^2.0.79",
+    "@browserbasehq/sdk": "^2.6.0",
+    "@browserbasehq/stagehand": "^3.0.5",
     "@modelcontextprotocol/sdk": "^1.24.3",
     "ai": "^5.0.0",
     "ai-sdk-provider-claude-code": "^2.0.0",
@@ -31,7 +42,9 @@
   "devDependencies": {
     "@biomejs/biome": "2.3.8",
     "@types/node": "^20.14.0",
+    "@vitest/coverage-v8": "^4.0.15",
     "tsup": "^8.5.1",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.15"
   }
 }
