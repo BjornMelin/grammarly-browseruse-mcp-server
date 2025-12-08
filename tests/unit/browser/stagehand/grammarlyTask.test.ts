@@ -29,6 +29,9 @@ function createMockPage(url = "https://other-site.com") {
 		url: mockPageUrl.mockReturnValue(url),
 		goto: mockPageGoto,
 		evaluate: mockPageEvaluate,
+		locator: vi.fn().mockReturnValue({
+			fill: vi.fn().mockResolvedValue(undefined),
+		}),
 	};
 }
 

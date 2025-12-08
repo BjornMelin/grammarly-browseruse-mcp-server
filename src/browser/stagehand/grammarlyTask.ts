@@ -96,29 +96,18 @@ export async function runStagehandGrammarlyTask(
     await stagehand.act("Select all text in the editor using Ctrl+A or Cmd+A");
     await sleep(100);
 
-    // Type the text using stagehand's act for short text, or page API for long text
+    // Type the text using stagehand's act for short text, or page locator.fill() for long text
     log("debug", "Typing text into editor");
 
     // For shorter texts, type directly using stagehand
     if (truncatedText.length <= 500) {
       await stagehand.act(`Type the following text exactly: ${truncatedText}`);
     } else {
-      // For longer texts, use clipboard API to paste the full content directly
-      log("debug", "Pasting long text via clipboard API");
-      await page.evaluate(async (textToPaste) => {
-        // Find the contenteditable element (Grammarly editor)
-        const editor = document.querySelector('[contenteditable="true"]');
-        if (editor) {
-          // Use clipboard API for reliable pasting
-          await navigator.clipboard.writeText(textToPaste);
-          // Focus the editor
-          (editor as HTMLElement).focus();
-          // Trigger paste
-          document.execCommand("paste");
-        } else {
-          throw new Error("Could not find contenteditable editor");
-        }
-      }, truncatedText);
+      // For longer texts, use Playwright's fill() method which handles contenteditable elements
+      // This is more reliable than clipboard API and doesn't require permissions
+      log("debug", "Filling long text using Playwright locator.fill()");
+      const editorLocator = page.locator('[contenteditable="true"]');
+      await editorLocator.fill(truncatedText);
       await sleep(500);
     }
 
