@@ -23,12 +23,16 @@ const mockStagehandObserve = vi.fn();
 const mockStagehandAct = vi.fn();
 const mockStagehandExtract = vi.fn();
 
+// Mock for waitForLoadState
+const mockWaitForLoadState = vi.fn();
+
 // Create mock page factory
 function createMockPage(url = "https://other-site.com") {
 	return {
 		url: mockPageUrl.mockReturnValue(url),
 		goto: mockPageGoto,
 		evaluate: mockPageEvaluate,
+		waitForLoadState: mockWaitForLoadState.mockResolvedValue(undefined),
 		locator: vi.fn().mockReturnValue({
 			fill: vi.fn().mockResolvedValue(undefined),
 		}),
@@ -61,6 +65,7 @@ describe("runStagehandGrammarlyTask", () => {
 		// Default successful mocks
 		mockPageGoto.mockResolvedValue(undefined);
 		mockPageEvaluate.mockResolvedValue(undefined);
+		mockWaitForLoadState.mockResolvedValue(undefined);
 		mockStagehandObserve.mockResolvedValue([{ description: "New document button" }]);
 		mockStagehandAct.mockResolvedValue(undefined);
 		mockStagehandExtract.mockResolvedValue({
@@ -196,16 +201,22 @@ describe("runStagehandGrammarlyTask", () => {
 			expect(directTypeCall).toBeDefined();
 		});
 
-		it("uses page.evaluate for long text (>500 chars)", async () => {
-			const longText = "a".repeat(1200); // Long text triggers clipboard API approach
-			const mockPage = createMockPage("https://app.grammarly.com");
+		it("uses locator.fill() for long text (>500 chars)", async () => {
+			const longText = "a".repeat(1200); // Long text triggers fill() approach
+			const mockFill = vi.fn().mockResolvedValue(undefined);
+			const mockPage = {
+				...createMockPage("https://app.grammarly.com"),
+				locator: vi.fn().mockReturnValue({
+					fill: mockFill,
+				}),
+			};
 			const stagehand = createMockStagehand([mockPage]);
 
 			await runStagehandGrammarlyTask(stagehand as unknown as Stagehand, longText);
 
-			// Check that page.evaluate was called to paste via clipboard API
-			const evaluateCalls = mockPage.evaluate.mock.calls;
-			expect(evaluateCalls.length).toBeGreaterThan(0);
+			// Check that locator.fill() was called for long text
+			expect(mockPage.locator).toHaveBeenCalledWith('[contenteditable="true"]');
+			expect(mockFill).toHaveBeenCalled();
 		});
 
 	});

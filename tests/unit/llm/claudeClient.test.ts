@@ -160,8 +160,8 @@ describe("rewriteTextWithClaude", () => {
 		it.each([
 			["neutral", "Use a neutral tone that feels like a human wrote it."],
 			["formal", "Use a formal tone that feels like a human wrote it."],
-			["informal", "Use a informal tone that feels like a human wrote it."],
-			["academic", "Use a academic tone that feels like a human wrote it."],
+			["informal", "Use an informal tone that feels like a human wrote it."],
+			["academic", "Use an academic tone that feels like a human wrote it."],
 			["custom", "Use a natural human tone guided by the custom instructions."],
 		] as const)("handles %s tone", async (tone, expectedToneText) => {
 			mockGenerateObject.mockResolvedValueOnce({

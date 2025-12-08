@@ -104,15 +104,15 @@ describe("StagehandProvider", () => {
 			);
 		});
 
-		it("passes proxy options to session manager", async () => {
+		it("ignores proxyCountryCode option (not supported)", async () => {
+			// proxyCountryCode is accepted in the interface but not passed to session manager
 			const provider = new StagehandProvider(baseConfig);
 			await provider.createSession({ proxyCountryCode: "UK" });
 
-			expect(mockGetOrCreateSession).toHaveBeenCalledWith(
-				expect.objectContaining({
-					proxyCountry: "UK",
-				})
-			);
+			// Should be called without proxyCountry since it was removed from session options
+			expect(mockGetOrCreateSession).toHaveBeenCalledWith({
+				contextId: undefined,
+			});
 		});
 
 		it("initializes Stagehand instance", async () => {

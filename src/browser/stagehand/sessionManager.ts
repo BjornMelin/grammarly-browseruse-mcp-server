@@ -72,7 +72,6 @@ export class BrowserbaseSessionManager {
    */
   async getOrCreateSession(options?: {
     contextId?: string;
-    proxyCountry?: string;
     forceNew?: boolean;
   }): Promise<SessionInfo> {
     // Try to reuse existing session if valid
@@ -128,7 +127,6 @@ export class BrowserbaseSessionManager {
     log("info", "Created Browserbase session", {
       sessionId: session.id,
       contextId: newContextId,
-      hasProxy: !!options?.proxyCountry,
     });
 
     return {
@@ -182,7 +180,8 @@ export class BrowserbaseSessionManager {
     try {
       const debug = await this.bb.sessions.debug(sessionId);
       return debug.debuggerFullscreenUrl ?? debug.debuggerUrl ?? null;
-    } catch {
+    } catch (error) {
+      log("debug", "Failed to get debug URL", { sessionId, error });
       return null;
     }
   }

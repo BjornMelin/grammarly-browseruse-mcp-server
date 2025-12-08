@@ -2,7 +2,8 @@ import { defineConfig } from "vitest/config";
 
 // Detect if running in CI with sharding (shards generate partial coverage)
 const isShardedCIRun =
-	process.env.CI && process.argv.some((arg) => arg.includes("--shard"));
+	process.env.CI &&
+	process.argv.some((arg) => arg.startsWith("--shard=") || arg === "--shard");
 
 export default defineConfig({
 	test: {
@@ -11,7 +12,7 @@ export default defineConfig({
 		environment: "node",
 		globals: true,
 
-		// Pool configuration: threads for unit tests (fast), forks for integration (isolation)
+		// Pool configuration: threads for fast parallel execution
 		pool: "threads",
 		poolOptions: {
 			threads: { singleThread: false },

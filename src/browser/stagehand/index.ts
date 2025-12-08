@@ -1,4 +1,4 @@
-import { Stagehand } from "@browserbasehq/stagehand";
+import { type AISdkClient, Stagehand } from "@browserbasehq/stagehand";
 import type { AppConfig } from "../../config";
 import { log } from "../../config";
 import {
@@ -36,7 +36,6 @@ export class StagehandProvider implements BrowserProvider {
     // Get or create a Browserbase session
     const sessionInfo = await this.sessionManager.getOrCreateSession({
       contextId: this.config.browserbaseContextId ?? undefined,
-      proxyCountry: options?.proxyCountryCode ?? undefined,
     });
 
     let stagehand: Stagehand;
@@ -146,10 +145,8 @@ export class StagehandProvider implements BrowserProvider {
       projectId: browserbaseProjectId,
       // Connect to existing session
       browserbaseSessionID: sessionId,
-      // LLM configuration - cast to any to avoid type issues with AISdkClient
-      llmClient: llmClient as unknown as ConstructorParameters<
-        typeof Stagehand
-      >[0]["llmClient"],
+      // LLM configuration with proper AISdkClient type
+      llmClient: llmClient as AISdkClient,
       // Self-healing for DOM changes
       selfHeal: true,
       // Verbosity based on log level

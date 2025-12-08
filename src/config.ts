@@ -1,11 +1,10 @@
 import { z } from "zod";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
-export type BrowserProvider = "stagehand" | "browser-use";
 
 export interface AppConfig {
   // Browser provider selection
-  browserProvider: BrowserProvider;
+  browserProvider: "stagehand" | "browser-use";
 
   // Browser Use Cloud (fallback provider)
   browserUseApiKey: string | undefined;

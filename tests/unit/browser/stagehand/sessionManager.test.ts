@@ -51,10 +51,6 @@ describe("BrowserbaseSessionManager", () => {
 		vi.clearAllMocks();
 	});
 
-	afterEach(() => {
-		vi.resetAllMocks();
-	});
-
 	describe("constructor", () => {
 		it("throws when browserbaseApiKey is missing", () => {
 			const config = { ...baseConfig, browserbaseApiKey: undefined };

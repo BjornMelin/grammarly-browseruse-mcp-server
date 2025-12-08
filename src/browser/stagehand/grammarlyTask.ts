@@ -57,7 +57,7 @@ export async function runStagehandGrammarlyTask(
       await page.goto("https://app.grammarly.com", {
         waitUntil: "networkidle",
       });
-      await sleep(2000);
+      await page.waitForLoadState("domcontentloaded");
     }
 
     // Step 2: Create a new document using observe -> act pattern
@@ -82,7 +82,8 @@ export async function runStagehandGrammarlyTask(
     }
 
     // Step 3: Wait for editor to load
-    await sleep(2000);
+    await page.waitForLoadState("domcontentloaded");
+    await sleep(1500); // Allow editor to initialize
 
     // Step 4: Clear any existing content and paste new text
     log("debug", "Pasting text into editor");
@@ -90,11 +91,8 @@ export async function runStagehandGrammarlyTask(
     // Try to find and focus the editor first
     await stagehand.act("Click on the main text editor area to focus it");
 
-    await sleep(500);
-
     // Clear existing content using stagehand act (keyboard simulation)
     await stagehand.act("Select all text in the editor using Ctrl+A or Cmd+A");
-    await sleep(100);
 
     // Type the text using stagehand's act for short text, or page locator.fill() for long text
     log("debug", "Typing text into editor");
@@ -108,11 +106,11 @@ export async function runStagehandGrammarlyTask(
       log("debug", "Filling long text using Playwright locator.fill()");
       const editorLocator = page.locator('[contenteditable="true"]');
       await editorLocator.fill(truncatedText);
-      await sleep(500);
     }
 
     log("debug", "Text pasted into editor");
-    await sleep(2000);
+    // Brief delay for Grammarly to process the text
+    await sleep(1000);
 
     // Step 5: Trigger AI Detection check
     log("debug", "Looking for AI detection button");
@@ -137,7 +135,11 @@ export async function runStagehandGrammarlyTask(
 
     // Step 6: Wait for results to load
     log("debug", "Waiting for AI detection results");
-    await sleep(5000);
+    // Wait for network to settle and scores to calculate
+    await page.waitForLoadState("networkidle").catch(() => {
+      log("debug", "Network idle timeout, continuing anyway");
+    });
+    await sleep(4000); // Allow time for AI detection scoring
 
     // Step 7: Extract scores using Stagehand's extract with Zod schema
     // V3 API: stagehand.extract("instruction", schema)

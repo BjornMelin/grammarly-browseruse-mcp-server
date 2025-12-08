@@ -1,3 +1,4 @@
+import type { AISdkClient } from "@browserbasehq/stagehand";
 import type { AppConfig } from "../config";
 import { log } from "../config";
 
@@ -5,26 +6,24 @@ export type LLMProvider = "claude-code" | "openai" | "anthropic" | "google";
 
 /**
  * Detect which LLM provider to use based on available credentials.
- * Priority: Claude Code CLI (when no API key) > OpenAI > Anthropic > Google
+ * Priority: OpenAI > Google > Anthropic > Claude Code CLI (default)
+ *
+ * The detection checks for explicit API keys first, falling back to
+ * Claude Code CLI authentication when no other credentials are present.
  */
 export function detectLlmProvider(config: AppConfig): LLMProvider {
-  // If no Claude API key is set, assume Claude Code CLI authentication
-  if (!config.claudeApiKey && !process.env.ANTHROPIC_API_KEY) {
-    return "claude-code";
-  }
-
-  // Check for other providers in priority order
+  // Check for explicit API keys in priority order
   if (process.env.OPENAI_API_KEY) {
     return "openai";
-  }
-  if (process.env.ANTHROPIC_API_KEY || config.claudeApiKey) {
-    return "anthropic";
   }
   if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return "google";
   }
+  if (process.env.ANTHROPIC_API_KEY || config.claudeApiKey) {
+    return "anthropic";
+  }
 
-  // Default to Claude Code CLI auth
+  // Default to Claude Code CLI auth (no API key required)
   return "claude-code";
 }
 
@@ -37,7 +36,7 @@ export function detectLlmProvider(config: AppConfig): LLMProvider {
 export async function createStagehandLlmClient(
   config: AppConfig,
   preferredProvider?: LLMProvider,
-): Promise<unknown> {
+): Promise<AISdkClient> {
   const provider = preferredProvider ?? detectLlmProvider(config);
 
   log("debug", `Creating Stagehand LLM client with provider: ${provider}`);

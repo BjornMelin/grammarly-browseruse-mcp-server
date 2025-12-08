@@ -67,11 +67,19 @@ export interface BrowserProvider {
 export async function createBrowserProvider(
   config: AppConfig,
 ): Promise<BrowserProvider> {
-  if (config.browserProvider === "stagehand") {
-    const { StagehandProvider } = await import("./stagehand/index");
-    return new StagehandProvider(config);
+  switch (config.browserProvider) {
+    case "stagehand": {
+      const { StagehandProvider } = await import("./stagehand/index");
+      return new StagehandProvider(config);
+    }
+    case "browser-use": {
+      const { BrowserUseProvider } = await import("./browserUseProvider");
+      return new BrowserUseProvider(config);
+    }
+    default: {
+      // Exhaustive check - TypeScript will error if a case is missing
+      const exhaustiveCheck: never = config.browserProvider;
+      throw new Error(`Unknown browser provider: ${exhaustiveCheck}`);
+    }
   }
-
-  const { BrowserUseProvider } = await import("./browserUseProvider");
-  return new BrowserUseProvider(config);
 }

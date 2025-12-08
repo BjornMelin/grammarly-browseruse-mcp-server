@@ -48,11 +48,9 @@ describe("detectLlmProvider", () => {
 		expect(detectLlmProvider(config)).toBe("claude-code");
 	});
 
-	it("returns openai when OPENAI_API_KEY is set (with anthropic credentials)", () => {
-		// OpenAI is only checked after claude-code is ruled out
-		// (i.e., when ANTHROPIC_API_KEY or claudeApiKey exists)
+	it("returns openai when OPENAI_API_KEY is set", () => {
+		// OpenAI takes highest priority when its API key is present
 		process.env.OPENAI_API_KEY = "sk-test";
-		process.env.ANTHROPIC_API_KEY = "sk-ant-exists";
 		const config: AppConfig = {
 			claudeApiKey: undefined,
 			logLevel: "error",
@@ -80,22 +78,32 @@ describe("detectLlmProvider", () => {
 		expect(detectLlmProvider(config)).toBe("anthropic");
 	});
 
-	it("returns anthropic when claudeApiKey set (even with GOOGLE_GENERATIVE_AI_API_KEY)", () => {
-		// Note: In the current implementation, Google is never selected because:
-		// - To skip claude-code, you need claudeApiKey OR ANTHROPIC_API_KEY
-		// - But those same credentials trigger anthropic return before google check
+	it("returns google when GOOGLE_GENERATIVE_AI_API_KEY is set alone", () => {
+		// Google is selected when its API key is present and OpenAI is not
 		process.env.GOOGLE_GENERATIVE_AI_API_KEY = "google-key";
 		const config: AppConfig = {
-			claudeApiKey: "sk-ant-config",
+			claudeApiKey: undefined,
 			logLevel: "error",
 		} as AppConfig;
 
-		// This test documents the actual behavior - google is never reached
-		expect(detectLlmProvider(config)).toBe("anthropic");
+		expect(detectLlmProvider(config)).toBe("google");
 	});
 
-	it("prioritizes openai over anthropic", () => {
+	it("prioritizes google over anthropic when both set", () => {
+		// Google takes priority over Anthropic in the detection order
+		process.env.GOOGLE_GENERATIVE_AI_API_KEY = "google-key";
+		process.env.ANTHROPIC_API_KEY = "sk-ant-config";
+		const config: AppConfig = {
+			claudeApiKey: undefined,
+			logLevel: "error",
+		} as AppConfig;
+
+		expect(detectLlmProvider(config)).toBe("google");
+	});
+
+	it("prioritizes openai over google and anthropic", () => {
 		process.env.OPENAI_API_KEY = "sk-openai";
+		process.env.GOOGLE_GENERATIVE_AI_API_KEY = "google-key";
 		process.env.ANTHROPIC_API_KEY = "sk-anthropic";
 		const config: AppConfig = {
 			claudeApiKey: undefined,
@@ -103,17 +111,6 @@ describe("detectLlmProvider", () => {
 		} as AppConfig;
 
 		expect(detectLlmProvider(config)).toBe("openai");
-	});
-
-	it("prioritizes anthropic over google", () => {
-		process.env.ANTHROPIC_API_KEY = "sk-anthropic";
-		process.env.GOOGLE_GENERATIVE_AI_API_KEY = "google-key";
-		const config: AppConfig = {
-			claudeApiKey: undefined,
-			logLevel: "error",
-		} as AppConfig;
-
-		expect(detectLlmProvider(config)).toBe("anthropic");
 	});
 });
 

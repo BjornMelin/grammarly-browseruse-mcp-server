@@ -95,13 +95,15 @@ export class BrowserUseProvider implements BrowserProvider {
       await client.sessions.deleteSession({
         session_id: sessionId,
       });
-      this.activeSessions.delete(sessionId);
       log("debug", "BrowserUseProvider: Session closed", { sessionId });
     } catch (error) {
       log("warn", "BrowserUseProvider: Failed to close session", {
         sessionId,
         error,
       });
+    } finally {
+      // Always cleanup local state regardless of API success/failure
+      this.activeSessions.delete(sessionId);
     }
   }
 }
