@@ -26,6 +26,7 @@ pnpm test:ci        # CI mode with coverage + JSON reporter
 **Framework**: Vitest with V8 coverage provider.
 
 **Coverage thresholds** (enforced in CI):
+
 - Lines: 85%
 - Functions: 85%
 - Branches: 75%
@@ -57,12 +58,14 @@ tests/
 ```
 
 **Mock patterns**:
+
 - Use `vi.mock()` for module mocks; import after mocking
 - Use `vi.fn()` for function mocks with `mockResolvedValue`/`mockRejectedValue`
 - Use `vi.useFakeTimers()` for retry/backoff tests
 - Stub `setTimeout` globally to skip `sleep()` delays in Stagehand tests
 
 **Key conventions**:
+
 - All tests are synchronous by default; async only when awaiting promises
 - Mock at module boundaries (SDK clients, external services)
 - Use `test.each()` for parameterized edge cases
@@ -152,8 +155,9 @@ Simpler setup, less reliable for production.
 - `BROWSERBASE_PROJECT_ID` - Required. From Browserbase dashboard
 - `BROWSERBASE_CONTEXT_ID` - Optional. Persistent login context
 - `BROWSERBASE_SESSION_ID` - Optional. Reuse existing session
-- `STAGEHAND_MODEL` - Optional. LLM model (default: gpt-4o)
+- `STAGEHAND_MODEL` - Optional. LLM model (default: gemini-2.5-flash)
 - `STAGEHAND_CACHE_DIR` - Optional. Action caching directory
+- `GOOGLE_GENERATIVE_AI_API_KEY` - Required for Google/Gemini models. Also accepts `GEMINI_API_KEY`
 
 ### Browser Use (when BROWSER_PROVIDER=browser-use)
 
@@ -167,15 +171,15 @@ Simpler setup, less reliable for production.
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `src/browser/provider.ts` | Provider interface and factory function |
-| `src/browser/stagehand/index.ts` | StagehandProvider implementation |
-| `src/browser/stagehand/sessionManager.ts` | Browserbase session/context lifecycle |
-| `src/browser/stagehand/grammarlyTask.ts` | Grammarly automation (observe/act/extract) |
-| `src/browser/stagehand/schemas.ts` | Zod schemas for score extraction |
-| `src/browser/browserUseProvider.ts` | Browser Use provider (fallback) |
-| `src/llm/stagehandLlm.ts` | Multi-provider LLM client for Stagehand |
-| `src/llm/claudeClient.ts` | Claude client for text rewriting |
-| `src/grammarlyOptimizer.ts` | Main optimization loop with retry logic |
-| `src/config.ts` | Environment validation and AppConfig |
+| File                                      | Purpose                                    |
+| ----------------------------------------- | ------------------------------------------ |
+| `src/browser/provider.ts`                 | Provider interface and factory function    |
+| `src/browser/stagehand/index.ts`          | StagehandProvider implementation           |
+| `src/browser/stagehand/sessionManager.ts` | Browserbase session/context lifecycle      |
+| `src/browser/stagehand/grammarlyTask.ts`  | Grammarly automation (observe/act/extract) |
+| `src/browser/stagehand/schemas.ts`        | Zod schemas for score extraction           |
+| `src/browser/browserUseProvider.ts`       | Browser Use provider (fallback)            |
+| `src/llm/stagehandLlm.ts`                 | Multi-provider LLM client for Stagehand    |
+| `src/llm/claudeClient.ts`                 | Claude client for text rewriting           |
+| `src/grammarlyOptimizer.ts`               | Main optimization loop with retry logic    |
+| `src/config.ts`                           | Environment validation and AppConfig       |

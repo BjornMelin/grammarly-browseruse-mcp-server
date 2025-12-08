@@ -198,8 +198,11 @@ Required when `BROWSER_PROVIDER=stagehand`:
 | `BROWSERBASE_PROJECT_ID` | Yes | Project ID from Browserbase dashboard |
 | `BROWSERBASE_CONTEXT_ID` | No | Persistent context for Grammarly login state |
 | `BROWSERBASE_SESSION_ID` | No | Reuse existing session (advanced) |
-| `STAGEHAND_MODEL` | No | LLM for Stagehand automation (default: `gpt-4o`) |
+| `STAGEHAND_MODEL` | No | LLM for Stagehand automation (default: `gemini-2.5-flash`) |
 | `STAGEHAND_CACHE_DIR` | No | Directory for action caching |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | No* | Google API key for Gemini models. Also accepts `GEMINI_API_KEY` |
+
+\* Required when using Google/Gemini models (the default). Get from [aistudio.google.com](https://aistudio.google.com/apikey).
 
 ### Browser Use Cloud
 
@@ -429,16 +432,16 @@ When using Stagehand, the server automatically selects an LLM for browser automa
 
 **Priority order:**
 
-1. **Claude Code CLI** (default) - Uses `claude login` authentication
-2. **OpenAI** - Requires `OPENAI_API_KEY`
+1. **OpenAI** - Requires `OPENAI_API_KEY`
+2. **Google** - Requires `GOOGLE_GENERATIVE_AI_API_KEY` or `GEMINI_API_KEY`
 3. **Anthropic** - Requires `ANTHROPIC_API_KEY`
-4. **Google** - Requires `GOOGLE_GENERATIVE_AI_API_KEY`
+4. **Claude Code CLI** (fallback) - Uses `claude login` authentication
 
 Override with `STAGEHAND_MODEL`:
 
 ```bash
-STAGEHAND_MODEL=gpt-4o        # Default
-STAGEHAND_MODEL=gpt-4o-mini   # Budget option
+STAGEHAND_MODEL=gemini-2.5-flash  # Default (recommended)
+STAGEHAND_MODEL=gpt-4o            # Alternative
 ```
 
 ### Browser Use LLM Options
