@@ -635,10 +635,19 @@ describe("BrowserUseLlmSchema", () => {
 });
 
 describe("GrammarlyScoresSchema", () => {
-  it("validates correct score structure", async () => {
-    const { GrammarlyScoresSchema } =
-      await import("../../../src/browser/grammarlyTask");
+  type GrammarlyScoresSchemaType = (typeof import(
+    "../../../src/browser/grammarlyTask"
+  ))["GrammarlyScoresSchema"];
 
+  let GrammarlyScoresSchema: GrammarlyScoresSchemaType;
+
+  beforeAll(async () => {
+    ({ GrammarlyScoresSchema } = await import(
+      "../../../src/browser/grammarlyTask"
+    ));
+  });
+
+  it("validates correct score structure", () => {
     const validScores = {
       aiDetectionPercent: 50,
       plagiarismPercent: 10,
@@ -649,10 +658,7 @@ describe("GrammarlyScoresSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("allows null for percentage fields", async () => {
-    const { GrammarlyScoresSchema } =
-      await import("../../../src/browser/grammarlyTask");
-
+  it("allows null for percentage fields", () => {
     const nullScores = {
       aiDetectionPercent: null,
       plagiarismPercent: null,
@@ -663,10 +669,7 @@ describe("GrammarlyScoresSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects percentages over 100", async () => {
-    const { GrammarlyScoresSchema } =
-      await import("../../../src/browser/grammarlyTask");
-
+  it("rejects percentages over 100", () => {
     const invalidScores = {
       aiDetectionPercent: 101,
       plagiarismPercent: 5,
@@ -677,10 +680,7 @@ describe("GrammarlyScoresSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects negative percentages", async () => {
-    const { GrammarlyScoresSchema } =
-      await import("../../../src/browser/grammarlyTask");
-
+  it("rejects negative percentages", () => {
     const invalidScores = {
       aiDetectionPercent: -5,
       plagiarismPercent: 5,
@@ -691,10 +691,7 @@ describe("GrammarlyScoresSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("requires notes field", async () => {
-    const { GrammarlyScoresSchema } =
-      await import("../../../src/browser/grammarlyTask");
-
+  it("requires notes field", () => {
     const missingNotes = {
       aiDetectionPercent: 50,
       plagiarismPercent: 10,
