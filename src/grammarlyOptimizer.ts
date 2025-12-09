@@ -19,7 +19,9 @@ export const ToolInputSchema = z.object({
   mode: z
     .enum(["score_only", "optimize", "analyze"])
     .default("optimize")
-    .describe("How to use Grammarly + Claude."),
+    .describe(
+      "score_only gets scores, analyze interprets them, optimize rewrites to meet thresholds.",
+    ),
   max_ai_percent: z
     .number()
     .min(0)
@@ -58,9 +60,7 @@ export const ToolInputSchema = z.object({
     .string()
     .length(2)
     .optional()
-    .describe(
-      "ISO 3166-1 alpha-2 country code for proxy (e.g., 'us', 'gb'). 240+ countries supported.",
-    ),
+    .describe("ISO 3166-1 alpha-2 country code for proxy (e.g., 'us', 'gb')."),
   response_format: z
     .enum(["json", "markdown"])
     .default("json")
@@ -113,9 +113,7 @@ export const ToolOutputSchema: ZodType<StructuredContent> = z.object({
     .string()
     .nullable()
     .optional()
-    .describe(
-      "Real-time browser preview URL for debugging (from browser session).",
-    ),
+    .describe("Browser session debug URL."),
   provider: z
     .string()
     .optional()
