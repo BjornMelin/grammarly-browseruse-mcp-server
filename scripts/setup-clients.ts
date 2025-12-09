@@ -12,6 +12,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as readline from "node:readline";
+import * as dotenv from "dotenv";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // =============================================================================
 // Types
@@ -62,6 +65,16 @@ const CLIENTS: ClientConfig[] = [
     description: "Claude Desktop app on Linux",
   },
   {
+    name: "Claude Desktop (Windows)",
+    configPath: path.join(
+      process.env.APPDATA ?? path.join(HOME, "AppData", "Roaming"),
+      "Claude",
+      "claude_desktop_config.json",
+    ),
+    format: "json",
+    description: "Claude Desktop app on Windows",
+  },
+  {
     name: "Cursor",
     configPath: path.join(HOME, ".cursor", "mcp.json"),
     format: "json",
@@ -93,6 +106,25 @@ const CLIENTS: ClientConfig[] = [
   },
 ];
 
+function filterClientsForPlatform(
+  platform: NodeJS.Platform,
+  clients: ClientConfig[] = CLIENTS,
+): ClientConfig[] {
+  return clients.filter((client) => {
+    if (platform === "darwin") {
+      return !client.name.includes("(Linux)");
+    }
+    if (platform === "linux") {
+      return !client.name.includes("(macOS)");
+    }
+    if (platform === "win32") {
+      return !client.name.includes("(macOS)") && !client.name.includes("(Linux)");
+    }
+
+    return !client.name.includes("(macOS)") && !client.name.includes("(Linux)");
+  });
+}
+
 // =============================================================================
 // Environment Variable Parsing
 // =============================================================================
@@ -103,37 +135,7 @@ function parseEnvFile(envPath: string): Record<string, string> {
   }
 
   const content = fs.readFileSync(envPath, "utf-8");
-  const env: Record<string, string> = {};
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    // Skip comments and empty lines
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex === -1) {
-      continue;
-    }
-
-    const key = trimmed.slice(0, eqIndex).trim();
-    let value = trimmed.slice(eqIndex + 1).trim();
-
-    // Remove surrounding quotes if present
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-
-    if (key && value) {
-      env[key] = value;
-    }
-  }
-
-  return env;
+  return dotenv.parse(content);
 }
 
 // =============================================================================
@@ -141,7 +143,7 @@ function parseEnvFile(envPath: string): Record<string, string> {
 // =============================================================================
 
 function buildMcpConfig(
-  serverPath: string,
+  invocation: Pick<McpServerConfig, "command" | "args">,
   envVars: Record<string, string>,
 ): McpServerConfig {
   // Filter to only include relevant env vars (exclude empty values)
@@ -160,6 +162,7 @@ function buildMcpConfig(
   const optionalKeys = [
     "BROWSERBASE_CONTEXT_ID",
     "BROWSERBASE_SESSION_ID",
+    "STAGEHAND_MODEL",
     "STAGEHAND_CACHE_DIR",
     "STAGEHAND_LLM_PROVIDER",
     "REWRITE_LLM_PROVIDER",
@@ -184,9 +187,56 @@ function buildMcpConfig(
   }
 
   return {
-    command: "node",
-    args: [serverPath],
+    command: invocation.command,
+    args: invocation.args,
     env: filteredEnv,
+  };
+}
+
+function escapeTomlString(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+function isCommandAvailable(command: string): boolean {
+  const checker = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(checker, [command], { stdio: "ignore" });
+  return result.status === 0;
+}
+
+function resolveServerInvocation(projectRoot: string): {
+  command: string;
+  args: string[];
+  note: string;
+} {
+  const binaryName = "grammarly-mcp-server";
+  const distPath = path.join(projectRoot, "dist", "server.js");
+
+  if (isCommandAvailable(binaryName)) {
+    return {
+      command: binaryName,
+      args: [],
+      note: "Using globally available grammarly-mcp-server for portability across repo moves.",
+    };
+  }
+
+  if (isCommandAvailable("npx")) {
+    return {
+      command: "npx",
+      args: [binaryName],
+      note:
+        "Using npx to resolve grammarly-mcp-server (works if the package is installed locally or globally).",
+    };
+  }
+
+  return {
+    command: "node",
+    args: [distPath],
+    note: "Fallback to local dist path; rerun setup after moving the repository to refresh configs.",
   };
 }
 
@@ -197,7 +247,7 @@ function generateJsonConfig(
   const config = existingConfig ?? {};
 
   // Ensure mcpServers object exists
-  if (!config.mcpServers || typeof config.mcpServers !== "object") {
+  if (config.mcpServers == null || typeof config.mcpServers !== "object") {
     config.mcpServers = {};
   }
 
@@ -210,6 +260,7 @@ function generateJsonConfig(
 function generateTomlConfig(
   existingContent: string | null,
   mcpConfig: McpServerConfig,
+  serverNote?: string,
 ): string {
   // Simple TOML generation for OpenAI Codex format
   const lines: string[] = [];
@@ -224,7 +275,7 @@ function generateTomlConfig(
         inGrammarlySection = true;
         continue;
       }
-      if (inGrammarlySection && line.startsWith("[")) {
+      if (inGrammarlySection && /^\s*\[(?!mcp_servers\.grammarly\.)/.test(line)) {
         inGrammarlySection = false;
       }
       if (!inGrammarlySection) {
@@ -244,13 +295,18 @@ function generateTomlConfig(
 
   // Add grammarly section
   lines.push("[mcp_servers.grammarly]");
-  lines.push(`command = "${mcpConfig.command}"`);
-  lines.push(`args = [${mcpConfig.args.map((a) => `"${a}"`).join(", ")}]`);
+  lines.push(`command = "${escapeTomlString(mcpConfig.command)}"`);
+  lines.push(`args = [${mcpConfig.args
+    .map((a) => `"${escapeTomlString(a)}"`)
+    .join(", ")}]`);
   lines.push("");
+  if (serverNote) {
+    lines.push(`# ${serverNote}`);
+  }
   lines.push("[mcp_servers.grammarly.env]");
 
   for (const [key, value] of Object.entries(mcpConfig.env)) {
-    lines.push(`${key} = "${value}"`);
+    lines.push(`${key} = "${escapeTomlString(value)}"`);
   }
 
   lines.push("");
@@ -329,16 +385,7 @@ async function selectClients(rl: readline.Interface): Promise<ClientConfig[]> {
 
   // Filter to clients that make sense for the current platform
   const platform = process.platform;
-  const availableClients = CLIENTS.filter((client) => {
-    if (platform === "darwin") {
-      return !client.name.includes("(Linux)");
-    }
-    if (platform === "linux") {
-      return !client.name.includes("(macOS)");
-    }
-    // Windows - show all except platform-specific
-    return !client.name.includes("(macOS)") && !client.name.includes("(Linux)");
-  });
+  const availableClients = filterClientsForPlatform(platform);
 
   for (let i = 0; i < availableClients.length; i++) {
     const client = availableClients[i];
@@ -377,12 +424,24 @@ async function selectClients(rl: readline.Interface): Promise<ClientConfig[]> {
 // =============================================================================
 
 async function main(): Promise<void> {
-  const projectRoot = path.resolve(import.meta.dirname ?? __dirname, "..");
-  const envPath = path.join(projectRoot, ".env");
-  const serverPath = path.join(projectRoot, "dist", "server.js");
+  const moduleDir =
+    typeof import.meta.dirname === "string"
+      ? import.meta.dirname
+      : (() => {
+          try {
+            return path.dirname(fileURLToPath(import.meta.url));
+          } catch {
+            return process.cwd();
+          }
+        })();
 
-  // Check if build exists
-  if (!fs.existsSync(serverPath)) {
+  const projectRoot = path.resolve(moduleDir, "..");
+  const envPath = path.join(projectRoot, ".env");
+  const serverInvocation = resolveServerInvocation(projectRoot);
+  const distPath = path.join(projectRoot, "dist", "server.js");
+
+  // Check if build exists when falling back to the local dist path
+  if (serverInvocation.command === "node" && !fs.existsSync(distPath)) {
     console.error("\nError: dist/server.js not found.");
     console.error("Please run 'pnpm build' first.\n");
     process.exit(1);
@@ -425,8 +484,10 @@ async function main(): Promise<void> {
     }
 
     console.log(`\nConfiguring ${selectedClients.length} client(s)...\n`);
+    console.log(`Server invocation: ${serverInvocation.command} ${serverInvocation.args.join(" ")}`);
+    console.log(`Note: ${serverInvocation.note}`);
 
-    const mcpConfig = buildMcpConfig(serverPath, envVars);
+    const mcpConfig = buildMcpConfig(serverInvocation, envVars);
 
     for (const client of selectedClients) {
       console.log(`\n--- ${client.name} ---`);
@@ -449,7 +510,7 @@ async function main(): Promise<void> {
           content = generateJsonConfig(existing, mcpConfig);
         } else {
           const existing = readExistingToml(client.configPath);
-          content = generateTomlConfig(existing, mcpConfig);
+          content = generateTomlConfig(existing, mcpConfig, serverInvocation.note);
         }
 
         fs.writeFileSync(client.configPath, content, "utf-8");
@@ -470,7 +531,33 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+const isMainModule =
+  typeof process.argv[1] === "string" &&
+  pathToFileURL(process.argv[1]).href === import.meta.url;
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}
+
+export {
+  CLIENTS,
+  parseEnvFile,
+  buildMcpConfig,
+  escapeTomlString,
+  generateJsonConfig,
+  generateTomlConfig,
+  filterClientsForPlatform,
+  ensureDir,
+  backupFile,
+  readExistingConfig,
+  readExistingToml,
+  createReadlineInterface,
+  question,
+  selectClients,
+  resolveServerInvocation,
+  isCommandAvailable,
+  main,
+};
