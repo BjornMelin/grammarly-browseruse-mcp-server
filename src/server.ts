@@ -106,8 +106,8 @@ async function main(): Promise<void> {
     {
       title: "Grammarly Text Optimizer",
       description:
-        "Use Grammarly docs via Browser Use Cloud to score AI detection and plagiarism, and optionally rewrite text with Claude to reduce detection. " +
-        "Supports three modes: 'score_only' (just get scores), 'analyze' (get scores + analysis), 'optimize' (iteratively rewrite to meet thresholds).",
+        "Get AI detection and plagiarism scores from Grammarly, optionally rewriting text with Claude to reduce scores. " +
+        "Modes: 'score_only' (scores only), 'analyze' (scores + recommendations), 'optimize' (iterative rewriting to meet thresholds).",
       inputSchema: ToolInputSchema,
       outputSchema: ToolOutputSchema,
       annotations: {
