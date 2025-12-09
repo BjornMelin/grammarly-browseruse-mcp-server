@@ -32,9 +32,13 @@ if (ignoreSystemEnv && !envFileExists) {
   );
 }
 
-// Create the effective environment: .env-only if available, otherwise process.env
+// Create the effective environment: when ignoring system envs, use .env only;
+// otherwise merge .env (if present) with process.env so .env values fill gaps
+// without overwriting explicit system envs (mirrors dotenv.config semantics).
 const effectiveEnv =
-  ignoreSystemEnv && envFileExists ? dotenvConfig : process.env;
+  ignoreSystemEnv && envFileExists
+    ? dotenvConfig
+    : { ...dotenvConfig, ...process.env };
 
 // =============================================================================
 // Type Definitions
