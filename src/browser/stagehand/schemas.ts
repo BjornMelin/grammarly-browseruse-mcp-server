@@ -39,16 +39,30 @@ export const GrammarlyExtractSchema = z.object({
 export type GrammarlyExtractResult = z.infer<typeof GrammarlyExtractSchema>;
 
 /**
- * Schema for observing UI elements before acting.
+ * Zod schema matching Stagehand V3's observe() return type (Action interface).
  * Used with Stagehand's observe() method to find actionable elements.
+ *
+ * @see https://docs.stagehand.dev/v3/references/observe
  */
-export const ObservationSchema = z.object({
-  selector: z.string().describe("CSS selector for the observed element"),
-  description: z.string().describe("Human-readable description of the element"),
-  visible: z.boolean().describe("Whether the element is currently visible"),
-  interactable: z
-    .boolean()
-    .describe("Whether the element can be interacted with"),
+export const ActionSchema = z.object({
+  selector: z
+    .string()
+    .describe("XPath selector that precisely locates the element"),
+  description: z
+    .string()
+    .describe("Human-readable description of the element and its purpose"),
+  method: z
+    .string()
+    .optional()
+    .describe("Suggested interaction method: 'click', 'fill', 'type', etc."),
+  arguments: z
+    .array(z.string())
+    .optional()
+    .describe("Additional parameters for the action"),
 });
 
-export type Observation = z.infer<typeof ObservationSchema>;
+export type Action = z.infer<typeof ActionSchema>;
+
+// Backward compatibility aliases
+export const ObservationSchema = ActionSchema;
+export type Observation = Action;

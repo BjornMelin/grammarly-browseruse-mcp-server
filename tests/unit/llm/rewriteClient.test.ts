@@ -396,8 +396,9 @@ describe("rewriteText", () => {
 
 			const promise = rewriteText(baseConfig, baseParams);
 			promise.catch(() => {});
+			// withTimeout throws "Operation timed out after Xms", which gets wrapped in "Rewrite failed: ..."
 			const expectation = expect(promise).rejects.toThrow(
-				`Rewrite request exceeded timeout of ${baseConfig.llmRequestTimeoutMs}ms`,
+				`Rewrite failed: Operation timed out after ${baseConfig.llmRequestTimeoutMs}ms`,
 			);
 
 			// Advance timers beyond configured timeout (120_000 ms in baseConfig)

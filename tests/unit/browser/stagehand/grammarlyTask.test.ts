@@ -1,8 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Use vi.hoisted to create mock functions before they're used in vi.mock factory
+const {
+	mockIsOnePasswordConfigured,
+	mockGetGrammarlyCredentials,
+	mockAttemptGrammarlyLogin,
+} = vi.hoisted(() => ({
+	mockIsOnePasswordConfigured: vi.fn(),
+	mockGetGrammarlyCredentials: vi.fn(),
+	mockAttemptGrammarlyLogin: vi.fn(),
+}));
+
 // Mock the config module for logging
 vi.mock("../../../../src/config", () => ({
 	log: vi.fn(),
+}));
+
+// Mock 1Password provider
+vi.mock("../../../../src/auth/onePasswordProvider", () => ({
+	isOnePasswordConfigured: mockIsOnePasswordConfigured,
+	getGrammarlyCredentials: mockGetGrammarlyCredentials,
+}));
+
+// Mock grammarlyLogin
+vi.mock("../../../../src/browser/stagehand/grammarlyLogin", () => ({
+	attemptGrammarlyLogin: mockAttemptGrammarlyLogin,
 }));
 
 // Mock the setTimeout to prevent actual delays
@@ -127,18 +149,23 @@ describe("runStagehandGrammarlyTask", () => {
 			expect(mockFill.mock.calls[0][0]).toBe("a".repeat(8000));
 		});
 
-		it("processes short text correctly", async () => {
+		it("uses locator.fill() for short text (security fix)", async () => {
 			const shortText = "Short test text";
-			const stagehand = createMockStagehand([createMockPage("https://app.grammarly.com")]);
+			const mockFill = vi.fn().mockResolvedValue(undefined);
+			const mockPage = {
+				...createMockPage("https://app.grammarly.com"),
+				locator: vi.fn().mockReturnValue({
+					fill: mockFill,
+				}),
+			};
+			const stagehand = createMockStagehand([mockPage]);
 
 			await runStagehandGrammarlyTask(stagehand as unknown as Stagehand, shortText);
 
-			// Verify the exact text is used for short texts (<=500 chars get typed directly)
-			const actCalls = mockStagehandAct.mock.calls;
-			const typeCall = actCalls.find(
-				(call) => typeof call[0] === "string" && call[0].includes(shortText)
-			);
-			expect(typeCall).toBeDefined();
+			// SECURITY: All text must use locator.fill() to prevent prompt injection
+			expect(mockPage.locator).toHaveBeenCalledWith('[contenteditable="true"]');
+			expect(mockFill).toHaveBeenCalledTimes(1);
+			expect(mockFill.mock.calls[0][0]).toBe(shortText);
 		});
 	});
 
@@ -218,25 +245,38 @@ describe("runStagehandGrammarlyTask", () => {
 		});
 	});
 
-	describe("text input", () => {
-		it("types short text directly (<=500 chars)", async () => {
+	describe("text input (security)", () => {
+		// SECURITY: All text input must use locator.fill() to prevent prompt injection
+		// User text must NEVER be embedded in stagehand.act() LLM prompts
+
+		it("uses locator.fill() for all text regardless of length", async () => {
 			const shortText = "Short text under 500 characters";
-			const stagehand = createMockStagehand([createMockPage("https://app.grammarly.com")]);
+			const mockFill = vi.fn().mockResolvedValue(undefined);
+			const mockPage = {
+				...createMockPage("https://app.grammarly.com"),
+				locator: vi.fn().mockReturnValue({
+					fill: mockFill,
+				}),
+			};
+			const stagehand = createMockStagehand([mockPage]);
 
 			await runStagehandGrammarlyTask(stagehand as unknown as Stagehand, shortText);
 
-			// Find the act call that types the text directly
+			// SECURITY: locator.fill() must be used for ALL text to prevent prompt injection
+			expect(mockPage.locator).toHaveBeenCalledWith('[contenteditable="true"]');
+			expect(mockFill).toHaveBeenCalledTimes(1);
+			expect(mockFill.mock.calls[0][0]).toBe(shortText);
+
+			// Verify NO act() call contains user text (prompt injection prevention)
 			const actCalls = mockStagehandAct.mock.calls;
-			const directTypeCall = actCalls.find(
-				(call) =>
-					typeof call[0] === "string" &&
-					call[0].includes("Type the following text exactly:")
+			const hasUserTextInAct = actCalls.some(
+				(call) => typeof call[0] === "string" && call[0].includes(shortText)
 			);
-			expect(directTypeCall).toBeDefined();
+			expect(hasUserTextInAct).toBe(false);
 		});
 
-		it("uses locator.fill() for long text (>500 chars)", async () => {
-			const longText = "a".repeat(1200); // Long text triggers fill() approach
+		it("uses locator.fill() for long text", async () => {
+			const longText = "a".repeat(1200);
 			const mockFill = vi.fn().mockResolvedValue(undefined);
 			const mockPage = {
 				...createMockPage("https://app.grammarly.com"),
@@ -248,7 +288,6 @@ describe("runStagehandGrammarlyTask", () => {
 
 			await runStagehandGrammarlyTask(stagehand as unknown as Stagehand, longText);
 
-			// Check that locator.fill() was called for long text
 			expect(mockPage.locator).toHaveBeenCalledWith('[contenteditable="true"]');
 			expect(mockFill).toHaveBeenCalledTimes(1);
 			expect(mockFill.mock.calls[0][0]).toBe(longText);
@@ -602,5 +641,235 @@ describe("cleanupGrammarlyDocument", () => {
 
 		// Returns undefined (void function)
 		expect(result).toBeUndefined();
+	});
+});
+
+describe("auto-login integration", () => {
+	const testAppConfig = {
+		opServiceAccountToken: "ops_test_token",
+		opGrammarlySecretRef: "op://Browserbase Agent/Grammarly",
+	};
+
+	const testCredentials = {
+		username: "test@example.com",
+		password: "testPassword123",
+	};
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+
+		// Default mocks for successful scoring
+		mockPageGoto.mockResolvedValue(undefined);
+		mockPageEvaluate.mockResolvedValue(undefined);
+		mockWaitForLoadState.mockResolvedValue(undefined);
+		mockStagehandAct.mockResolvedValue(undefined);
+		mockStagehandExtract.mockResolvedValue({
+			aiDetectionPercent: 15,
+			plagiarismPercent: 3,
+			overallScore: 85,
+			notes: "Scores extracted successfully",
+		});
+
+		// Default: 1Password not configured
+		mockIsOnePasswordConfigured.mockReturnValue(false);
+	});
+
+	afterEach(() => {
+		vi.resetAllMocks();
+	});
+
+	describe("when 1Password is not configured", () => {
+		it("throws GrammarlyAuthError without attempting auto-login", async () => {
+			mockIsOnePasswordConfigured.mockReturnValue(false);
+			mockStagehandObserve.mockResolvedValue([]); // Not logged in
+			mockStagehandExtract.mockRejectedValue(new Error("Not reached"));
+
+			const mockPage = createMockPage("https://app.grammarly.com/docs");
+			const stagehand = createMockStagehand([mockPage]);
+
+			await expect(
+				runStagehandGrammarlyTask(stagehand as unknown as Stagehand, "Test", {
+					debugUrl: "https://debug.browserbase.com/session/123",
+					appConfig: undefined, // No appConfig
+				}),
+			).rejects.toMatchObject({
+				name: "GrammarlyAuthError",
+				message: expect.stringContaining("login required"),
+			});
+
+			// Should not have called 1Password functions
+			expect(mockGetGrammarlyCredentials).not.toHaveBeenCalled();
+			expect(mockAttemptGrammarlyLogin).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("when 1Password is configured", () => {
+		beforeEach(() => {
+			mockIsOnePasswordConfigured.mockReturnValue(true);
+			mockGetGrammarlyCredentials.mockResolvedValue(testCredentials);
+		});
+
+		it("attempts auto-login when auth check fails", async () => {
+			mockStagehandObserve
+				.mockResolvedValueOnce([]) // Auth check - not logged in
+				.mockResolvedValueOnce([{ description: "User avatar" }]) // Auth check after login
+				.mockResolvedValueOnce([{ description: "New document" }])
+				.mockResolvedValueOnce([{ description: "AI detection" }]);
+			mockAttemptGrammarlyLogin.mockResolvedValue({ success: true });
+
+			const mockPage = createMockPage("https://app.grammarly.com/docs");
+			const stagehand = createMockStagehand([mockPage]);
+
+			await runStagehandGrammarlyTask(stagehand as unknown as Stagehand, "Test", {
+				appConfig: testAppConfig as any,
+			});
+
+			// Should have called 1Password integration
+			expect(mockGetGrammarlyCredentials).toHaveBeenCalledWith({
+				serviceAccountToken: "ops_test_token",
+				secretRefPath: "op://Browserbase Agent/Grammarly",
+			});
+			expect(mockAttemptGrammarlyLogin).toHaveBeenCalledWith(
+				expect.anything(), // Stagehand instance
+				testCredentials,
+			);
+
+			// Verify credential fetch was called before login attempt
+			const credentialCallOrder =
+				mockGetGrammarlyCredentials.mock.invocationCallOrder[0];
+			const loginCallOrder =
+				mockAttemptGrammarlyLogin.mock.invocationCallOrder[0];
+			expect(credentialCallOrder).toBeLessThan(loginCallOrder);
+		});
+
+		it("continues with task after successful auto-login", async () => {
+			mockStagehandObserve
+				.mockResolvedValueOnce([]) // Auth check - not logged in (triggers auto-login)
+				.mockResolvedValueOnce([{ description: "New document" }])
+				.mockResolvedValueOnce([{ description: "AI detection" }]);
+			mockAttemptGrammarlyLogin.mockResolvedValue({ success: true });
+
+			const mockPage = createMockPage("https://app.grammarly.com/docs");
+			const stagehand = createMockStagehand([mockPage]);
+
+			const result = await runStagehandGrammarlyTask(
+				stagehand as unknown as Stagehand,
+				"Test text",
+				{ appConfig: testAppConfig as any },
+			);
+
+			// Task should complete successfully
+			expect(result).toEqual({
+				aiDetectionPercent: 15,
+				plagiarismPercent: 3,
+				overallScore: 85,
+				notes: "Scores extracted successfully",
+			});
+		});
+
+		it("throws GrammarlyAuthError when auto-login fails with invalid credentials", async () => {
+			mockStagehandObserve.mockResolvedValue([]); // Not logged in
+			mockAttemptGrammarlyLogin.mockResolvedValue({
+				success: false,
+				error: "Invalid password",
+				invalidCredentials: true,
+			});
+
+			const mockPage = createMockPage("https://app.grammarly.com/docs");
+			const stagehand = createMockStagehand([mockPage]);
+
+			await expect(
+				runStagehandGrammarlyTask(stagehand as unknown as Stagehand, "Test", {
+					debugUrl: "https://debug.browserbase.com/session/123",
+					appConfig: testAppConfig as any,
+				}),
+			).rejects.toMatchObject({
+				name: "GrammarlyAuthError",
+				message: expect.stringContaining("auto-login failed"),
+				debugUrl: "https://debug.browserbase.com/session/123",
+			});
+		});
+
+		it("throws GrammarlyAuthError when auto-login fails with CAPTCHA", async () => {
+			mockStagehandObserve.mockResolvedValue([]); // Not logged in
+			mockAttemptGrammarlyLogin.mockResolvedValue({
+				success: false,
+				error: "CAPTCHA detected",
+				captchaDetected: true,
+			});
+
+			const mockPage = createMockPage("https://app.grammarly.com/docs");
+			const stagehand = createMockStagehand([mockPage]);
+
+			await expect(
+				runStagehandGrammarlyTask(stagehand as unknown as Stagehand, "Test", {
+					appConfig: testAppConfig as any,
+				}),
+			).rejects.toMatchObject({
+				name: "GrammarlyAuthError",
+				message: expect.stringContaining("CAPTCHA detected"),
+			});
+		});
+
+		it("throws GrammarlyAuthError when auto-login is rate limited", async () => {
+			mockStagehandObserve.mockResolvedValue([]); // Not logged in
+			mockAttemptGrammarlyLogin.mockResolvedValue({
+				success: false,
+				error: "Too many attempts",
+				rateLimited: true,
+			});
+
+			const mockPage = createMockPage("https://app.grammarly.com/docs");
+			const stagehand = createMockStagehand([mockPage]);
+
+			await expect(
+				runStagehandGrammarlyTask(stagehand as unknown as Stagehand, "Test", {
+					appConfig: testAppConfig as any,
+				}),
+			).rejects.toMatchObject({
+				name: "GrammarlyAuthError",
+				message: expect.stringContaining("Too many attempts"),
+			});
+		});
+
+		it("falls back to manual login error when 1Password credential fetch fails", async () => {
+			mockStagehandObserve.mockResolvedValue([]); // Not logged in
+			mockGetGrammarlyCredentials.mockRejectedValue(
+				new Error("Secret not found"),
+			);
+
+			const mockPage = createMockPage("https://app.grammarly.com/docs");
+			const stagehand = createMockStagehand([mockPage]);
+
+			await expect(
+				runStagehandGrammarlyTask(stagehand as unknown as Stagehand, "Test", {
+					debugUrl: "https://debug.browserbase.com/session/123",
+					appConfig: testAppConfig as any,
+				}),
+			).rejects.toMatchObject({
+				name: "GrammarlyAuthError",
+				message: expect.stringContaining("1Password error"),
+			});
+
+			// Should not have attempted login
+			expect(mockAttemptGrammarlyLogin).not.toHaveBeenCalled();
+		});
+
+		it("skips auto-login when already logged in", async () => {
+			mockStagehandObserve
+				.mockResolvedValueOnce([{ description: "User avatar" }]) // Auth check - logged in
+				.mockResolvedValueOnce([{ description: "New document" }])
+				.mockResolvedValueOnce([{ description: "AI detection" }]);
+
+			const mockPage = createMockPage("https://app.grammarly.com/docs");
+			const stagehand = createMockStagehand([mockPage]);
+
+			await runStagehandGrammarlyTask(stagehand as unknown as Stagehand, "Test", {
+				appConfig: testAppConfig as any,
+			});
+
+			// Should not have called auto-login
+			expect(mockAttemptGrammarlyLogin).not.toHaveBeenCalled();
+		});
 	});
 });

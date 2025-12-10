@@ -2,6 +2,7 @@ import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import type { AppConfig, ClaudeModel, LLMProvider } from "../config";
 import { detectProviderFromApiKeys, log } from "../config";
+import { withTimeout } from "../utils";
 
 export const RewriterToneSchema = z.enum([
   "neutral",
@@ -249,29 +250,23 @@ export async function rewriteText(
   const timeoutMs = appConfig.llmRequestTimeoutMs;
   log("info", "Calling for rewrite", { provider, modelId });
 
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
   try {
-    const result = await Promise.race([
-      generateObject({
-        model,
-        schema: RewriteSchema,
-        prompt,
-      }),
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          log("error", "Rewrite timed out", {
-            provider,
-            modelId,
-            timeoutMs,
-            promptPreview: prompt.slice(0, 500),
-          });
-          reject(
-            new Error(`Rewrite request exceeded timeout of ${timeoutMs}ms`),
-          );
-        }, timeoutMs);
-      }),
-    ]);
+    const result = await withTimeout(
+      () =>
+        generateObject({
+          model,
+          schema: RewriteSchema,
+          prompt,
+        }),
+      timeoutMs,
+      () =>
+        log("error", "Rewrite timed out", {
+          provider,
+          modelId,
+          timeoutMs,
+          promptPreview: prompt.slice(0, 500),
+        }),
+    );
 
     const object = result.object;
 
@@ -285,10 +280,6 @@ export async function rewriteText(
     throw new Error(
       `Rewrite failed: ${error instanceof Error ? error.message : String(error)}`,
     );
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
   }
 }
 
@@ -362,29 +353,24 @@ export async function analyzeText(
   log("info", "Calling for analysis", { provider, modelId });
 
   const timeoutMs = appConfig.llmRequestTimeoutMs;
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   try {
-    const result = await Promise.race([
-      generateObject({
-        model,
-        schema: AnalysisSchema,
-        prompt,
-      }),
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          log("error", "Analysis timed out", {
-            provider,
-            modelId,
-            timeoutMs,
-            promptPreview: prompt.slice(0, 500),
-          });
-          reject(
-            new Error(`Analysis request exceeded timeout of ${timeoutMs}ms`),
-          );
-        }, timeoutMs);
-      }),
-    ]);
+    const result = await withTimeout(
+      () =>
+        generateObject({
+          model,
+          schema: AnalysisSchema,
+          prompt,
+        }),
+      timeoutMs,
+      () =>
+        log("error", "Analysis timed out", {
+          provider,
+          modelId,
+          timeoutMs,
+          promptPreview: prompt.slice(0, 500),
+        }),
+    );
 
     return result.object.analysis;
   } catch (error: unknown) {
@@ -392,10 +378,6 @@ export async function analyzeText(
     throw new Error(
       `Analysis failed: ${error instanceof Error ? error.message : String(error)}`,
     );
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
   }
 }
 
@@ -428,7 +410,6 @@ export async function summarizeOptimization(
   );
 
   const timeoutMs = appConfig.llmRequestTimeoutMs;
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   const prompt = [
     "You are summarizing the outcome of a Grammarly-based AI detection and plagiarism optimization run.",
@@ -457,27 +438,21 @@ export async function summarizeOptimization(
   log("debug", "Calling for optimization summary", { provider, modelId });
 
   try {
-    const result = await Promise.race([
-      generateText({
-        model,
-        prompt,
-      }),
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          log("error", "Optimization summary timed out", {
-            provider,
-            modelId,
-            timeoutMs,
-            promptPreview: prompt.slice(0, 500),
-          });
-          reject(
-            new Error(
-              `Optimization summary request exceeded timeout of ${timeoutMs}ms`,
-            ),
-          );
-        }, timeoutMs);
-      }),
-    ]);
+    const result = await withTimeout(
+      () =>
+        generateText({
+          model,
+          prompt,
+        }),
+      timeoutMs,
+      () =>
+        log("error", "Optimization summary timed out", {
+          provider,
+          modelId,
+          timeoutMs,
+          promptPreview: prompt.slice(0, 500),
+        }),
+    );
 
     return result.text;
   } catch (error: unknown) {
@@ -485,9 +460,5 @@ export async function summarizeOptimization(
     throw new Error(
       `Optimization summary failed: ${error instanceof Error ? error.message : String(error)}`,
     );
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
   }
 }

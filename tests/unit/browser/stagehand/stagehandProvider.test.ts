@@ -36,6 +36,7 @@ vi.mock("../../../../src/llm/stagehandLlm", () => ({
 // Mock grammarly task
 vi.mock("../../../../src/browser/stagehand/grammarlyTask", () => ({
 	runStagehandGrammarlyTask: (...args: unknown[]) => mockRunStagehandGrammarlyTask(...args),
+	cleanupGrammarlyDocument: vi.fn().mockResolvedValue(undefined),
 	GrammarlyAuthError: class GrammarlyAuthError extends Error {
 		readonly debugUrl: string | undefined;
 		constructor(message: string, debugUrl?: string) {

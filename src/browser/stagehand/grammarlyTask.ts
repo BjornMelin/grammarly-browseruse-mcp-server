@@ -1,5 +1,9 @@
 import type { Stagehand } from "@browserbasehq/stagehand";
+import { getGrammarlyCredentials } from "../../auth/onePasswordProvider";
+import type { AppConfig } from "../../config";
 import { log } from "../../config";
+import { sleep } from "../../utils";
+import { attemptGrammarlyLogin } from "./grammarlyLogin";
 import { GrammarlyExtractSchema } from "./schemas";
 
 const MAX_TEXT_LENGTH = 8000;
@@ -74,6 +78,8 @@ export interface GrammarlyTaskOptions {
   mode?: string;
   /** Debug URL for auth error messages */
   debugUrl?: string;
+  /** App config for 1Password integration check */
+  appConfig?: AppConfig;
 }
 
 export interface GrammarlyTaskResult {
@@ -81,13 +87,6 @@ export interface GrammarlyTaskResult {
   plagiarismPercent: number | null;
   overallScore?: number | null;
   notes: string;
-}
-
-/**
- * Sleep utility
- */
-async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -129,15 +128,74 @@ export async function runStagehandGrammarlyTask(
     // Step 1.5: Verify authentication status
     const authStatus = await checkGrammarlyAuthStatus(stagehand);
     if (!authStatus.loggedIn) {
-      const debugUrl = options?.debugUrl;
-      const message = debugUrl
-        ? `Grammarly login required. Open this URL to authenticate: ${debugUrl}`
-        : "Grammarly login required. Set BROWSERBASE_CONTEXT_ID after logging in via debug URL.";
-      log("warn", "Grammarly auth check failed", {
-        currentUrl: authStatus.currentUrl,
-        debugUrl,
-      });
-      throw new GrammarlyAuthError(message, debugUrl);
+      const trimmedDebugUrl = options?.debugUrl?.trim() || undefined;
+
+      // Attempt auto-login if 1Password is configured
+      const appConfig = options?.appConfig;
+      if (appConfig?.opServiceAccountToken) {
+        log(
+          "info",
+          "Auth check failed, attempting auto-login via 1Password credentials",
+        );
+
+        try {
+          const credentials = await getGrammarlyCredentials({
+            serviceAccountToken: appConfig.opServiceAccountToken,
+            secretRefPath: appConfig.opGrammarlySecretRef,
+          });
+
+          const loginResult = await attemptGrammarlyLogin(
+            stagehand,
+            credentials,
+          );
+
+          if (loginResult.success) {
+            log("info", "Auto-login successful, continuing with task");
+            // Continue with the task - auth is now valid
+          } else {
+            // Auto-login failed - fall back to manual login error
+            log("warn", "Auto-login failed, falling back to manual login", {
+              error: loginResult.error,
+              invalidCredentials: loginResult.invalidCredentials,
+              captchaDetected: loginResult.captchaDetected,
+              rateLimited: loginResult.rateLimited,
+            });
+
+            const message = trimmedDebugUrl
+              ? `Grammarly auto-login failed (${loginResult.error}). Manual login required: ${trimmedDebugUrl}`
+              : `Grammarly auto-login failed (${loginResult.error}). Set BROWSERBASE_CONTEXT_ID after manual login.`;
+
+            throw new GrammarlyAuthError(message, trimmedDebugUrl);
+          }
+        } catch (error) {
+          // Re-throw GrammarlyAuthError from auto-login
+          if (error instanceof GrammarlyAuthError) {
+            throw error;
+          }
+          // 1Password error - fall back to manual login
+          log(
+            "warn",
+            "1Password integration error, falling back to manual login",
+            {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+          const message = trimmedDebugUrl
+            ? `1Password error: ${error instanceof Error ? error.message : "unknown"}. Manual login: ${trimmedDebugUrl}`
+            : `1Password error: ${error instanceof Error ? error.message : "unknown"}. Set BROWSERBASE_CONTEXT_ID after manual login.`;
+          throw new GrammarlyAuthError(message, trimmedDebugUrl);
+        }
+      } else {
+        // No 1Password configured - use original manual login error
+        const message = trimmedDebugUrl
+          ? `Grammarly login required. Open this URL to authenticate: ${trimmedDebugUrl}`
+          : "Grammarly login required. Set BROWSERBASE_CONTEXT_ID after logging in via debug URL.";
+        log("warn", "Grammarly auth check failed", {
+          currentUrl: authStatus.currentUrl,
+          debugUrl: trimmedDebugUrl,
+        });
+        throw new GrammarlyAuthError(message, trimmedDebugUrl);
+      }
     }
 
     // Step 2: Create a new document using observe -> act pattern
@@ -174,19 +232,11 @@ export async function runStagehandGrammarlyTask(
     // Clear existing content using stagehand act (keyboard simulation)
     await stagehand.act("Select all text in the editor using Ctrl+A or Cmd+A");
 
-    // Type the text using stagehand's act for short text, or page locator.fill() for long text
-    log("debug", "Typing text into editor");
-
-    // For shorter texts, type directly using stagehand
-    if (truncatedText.length <= 500) {
-      await stagehand.act(`Type the following text exactly: ${truncatedText}`);
-    } else {
-      // For longer texts, use Playwright's fill() method which handles contenteditable elements
-      // This is more reliable than clipboard API and doesn't require permissions
-      log("debug", "Filling long text using Playwright locator.fill()");
-      const editorLocator = page.locator('[contenteditable="true"]');
-      await editorLocator.fill(truncatedText);
-    }
+    // SECURITY: Always use locator.fill() to avoid prompt injection via stagehand.act()
+    // User text must never be embedded in LLM prompts - use Playwright's fill() directly
+    log("debug", "Filling text using Playwright locator.fill()");
+    const editorLocator = page.locator('[contenteditable="true"]');
+    await editorLocator.fill(truncatedText);
 
     log("debug", "Text pasted into editor");
     // Brief delay for Grammarly to process the text

@@ -178,23 +178,41 @@ describe("GrammarlyExtractSchema", () => {
 	});
 });
 
-describe("ObservationSchema", () => {
-	it("accepts valid observation", () => {
+describe("ObservationSchema (ActionSchema alias)", () => {
+	// ObservationSchema is now an alias for ActionSchema (Stagehand V3)
+	// Required fields: selector, description
+	// Optional fields: method, arguments
+
+	it("accepts valid action with required fields only", () => {
 		const result = ObservationSchema.safeParse({
-			selector: ".new-document-button",
+			selector: "//button[@id='new-doc']",
 			description: "Button to create new document",
-			visible: true,
-			interactable: true,
 		});
 		expect(result.success).toBe(true);
 	});
 
-	it("rejects missing fields", () => {
+	it("accepts valid action with all fields", () => {
 		const result = ObservationSchema.safeParse({
-			selector: ".button",
+			selector: "//button[@id='new-doc']",
+			description: "Button to create new document",
+			method: "click",
+			arguments: ["force"],
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("rejects missing required fields", () => {
+		// Missing description
+		const result1 = ObservationSchema.safeParse({
+			selector: "//button",
+		});
+		expect(result1.success).toBe(false);
+
+		// Missing selector
+		const result2 = ObservationSchema.safeParse({
 			description: "A button",
 		});
-		expect(result.success).toBe(false);
+		expect(result2.success).toBe(false);
 	});
 });
 

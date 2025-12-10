@@ -12,7 +12,11 @@ import type {
   SessionOptions,
   SessionResult,
 } from "../provider";
-import { GrammarlyAuthError, runStagehandGrammarlyTask } from "./grammarlyTask";
+import {
+  cleanupGrammarlyDocument,
+  GrammarlyAuthError,
+  runStagehandGrammarlyTask,
+} from "./grammarlyTask";
 import { BrowserbaseSessionManager } from "./sessionManager";
 
 /**
@@ -115,7 +119,12 @@ export class StagehandProvider implements BrowserProvider {
         iteration: options?.iteration,
         mode: options?.mode,
         debugUrl,
+        appConfig: this.config, // Pass config for 1Password integration
       });
+
+      // Clean up document after scoring to keep Grammarly workspace tidy
+      // Non-critical: don't fail the scoring operation if cleanup fails
+      await cleanupGrammarlyDocument(stagehand);
 
       const liveUrl = await this.sessionManager.getDebugUrl(sessionId);
 
@@ -206,8 +215,16 @@ export class StagehandProvider implements BrowserProvider {
 
 export {
   checkGrammarlyAuthStatus,
+  cleanupGrammarlyDocument,
   GrammarlyAuthError,
   runStagehandGrammarlyTask,
 } from "./grammarlyTask";
-export { type GrammarlyExtractResult, GrammarlyExtractSchema } from "./schemas";
+export {
+  type Action,
+  ActionSchema,
+  type GrammarlyExtractResult,
+  GrammarlyExtractSchema,
+  type Observation,
+  ObservationSchema,
+} from "./schemas";
 export { BrowserbaseSessionManager } from "./sessionManager";
