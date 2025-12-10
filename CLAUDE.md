@@ -42,6 +42,8 @@ tests/
 │   ├── server.test.ts
 │   ├── schemas.test.ts
 │   ├── grammarlyOptimizer.test.ts
+│   ├── auth/
+│   │   └── onePasswordProvider.test.ts
 │   ├── browser/
 │   │   ├── provider.test.ts
 │   │   ├── browserUseProvider.test.ts
@@ -49,7 +51,8 @@ tests/
 │   │   └── stagehand/
 │   │       ├── sessionManager.test.ts
 │   │       ├── stagehandProvider.test.ts
-│   │       └── grammarlyTask.test.ts
+│   │       ├── grammarlyTask.test.ts
+│   │       └── grammarlyLogin.test.ts
 │   └── llm/
 │       ├── rewriteClient.test.ts
 │       └── stagehandLlm.test.ts
@@ -162,6 +165,14 @@ Simpler setup, less reliable for production.
 - `STAGEHAND_MODEL` - Deprecated. Use `STAGEHAND_LLM_PROVIDER` + model vars instead
 - `STAGEHAND_CACHE_DIR` - Optional. Action caching directory
 
+### 1Password Integration (optional)
+
+- `OP_SERVICE_ACCOUNT_TOKEN` - 1Password service account token for auto-login
+- `OP_GRAMMARLY_SECRET_REF` - Secret reference path (default: `op://Browserbase Agent/Grammarly`)
+
+When configured, the server automatically logs into Grammarly for fresh contexts using credentials from 1Password.
+Falls back to manual login if auto-login fails (wrong credentials, CAPTCHA, rate limit).
+
 ### Browser Use (when BROWSER_PROVIDER=browser-use)
 
 - `BROWSER_USE_API_KEY` - Required. From cloud.browser-use.com
@@ -204,7 +215,9 @@ If not set, auto-detects from API keys (OpenAI > Google > Anthropic > Claude Cod
 | `src/browser/stagehand/index.ts`          | StagehandProvider implementation           |
 | `src/browser/stagehand/sessionManager.ts` | Browserbase session/context lifecycle      |
 | `src/browser/stagehand/grammarlyTask.ts`  | Grammarly automation (observe/act/extract) |
+| `src/browser/stagehand/grammarlyLogin.ts` | 1Password auto-login automation            |
 | `src/browser/stagehand/schemas.ts`        | Zod schemas for score extraction           |
+| `src/auth/onePasswordProvider.ts`         | 1Password SDK client and credential fetch  |
 | `src/browser/browserUseProvider.ts`       | Browser Use provider (fallback)            |
 | `src/llm/stagehandLlm.ts`                 | Multi-provider LLM client for Stagehand    |
 | `src/llm/rewriteClient.ts`                | Multi-provider LLM client for text rewriting |

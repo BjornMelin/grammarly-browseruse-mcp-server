@@ -382,6 +382,8 @@ describe("getSessionOptions BYOP fields", () => {
 		defaultMaxIterations: 5,
 		proxyConfig: null,
 		stealthConfig: null,
+		opServiceAccountToken: undefined,
+		opGrammarlySecretRef: "op://Browserbase Agent/Grammarly",
 	};
 
 	describe("external proxy configuration", () => {
@@ -521,6 +523,106 @@ describe("getSessionOptions BYOP fields", () => {
 			const result = getSessionOptions(config);
 			expect(result.proxyEnabled).toBe(true);
 			expect(result.proxyCountry).toBe("GB");
+		});
+	});
+});
+
+describe("1Password configuration", () => {
+	const baseConfig: AppConfig = {
+		ignoreSystemEnv: false,
+		browserProvider: "stagehand",
+		browserUseApiKey: undefined,
+		browserUseProfileId: undefined,
+		browserbaseApiKey: "test-key",
+		browserbaseProjectId: "test-project",
+		browserbaseSessionId: undefined,
+		browserbaseContextId: undefined,
+		stagehandModel: "gemini-2.5-flash",
+		stagehandCacheDir: undefined,
+		stagehandLlmProvider: undefined,
+		rewriteLlmProvider: undefined,
+		claudeModel: "auto",
+		openaiModel: "gpt-4o",
+		googleModel: "gemini-2.5-flash",
+		anthropicModel: "claude-sonnet-4-20250514",
+		claudeApiKey: "test-claude-key",
+		openaiApiKey: undefined,
+		googleApiKey: undefined,
+		anthropicApiKey: undefined,
+		llmRequestTimeoutMs: 120000,
+		connectTimeoutMs: 30000,
+		logLevel: "error",
+		browserUseDefaultTimeoutMs: 300000,
+		defaultMaxAiPercent: 10,
+		defaultMaxPlagiarismPercent: 5,
+		defaultMaxIterations: 5,
+		proxyConfig: null,
+		stealthConfig: null,
+		opServiceAccountToken: undefined,
+		opGrammarlySecretRef: "op://Browserbase Agent/Grammarly",
+	};
+
+	describe("opServiceAccountToken", () => {
+		it("is optional and can be undefined", () => {
+			const config: AppConfig = {
+				...baseConfig,
+				opServiceAccountToken: undefined,
+			};
+			expect(config.opServiceAccountToken).toBeUndefined();
+		});
+
+		it("accepts a valid service account token", () => {
+			const config: AppConfig = {
+				...baseConfig,
+				opServiceAccountToken: "ops_test_service_account_token_123",
+			};
+			expect(config.opServiceAccountToken).toBe(
+				"ops_test_service_account_token_123",
+			);
+		});
+	});
+
+	describe("opGrammarlySecretRef", () => {
+		it("has default value of op://Browserbase Agent/Grammarly", () => {
+			expect(baseConfig.opGrammarlySecretRef).toBe(
+				"op://Browserbase Agent/Grammarly",
+			);
+		});
+
+		it("accepts a custom secret reference path", () => {
+			const config: AppConfig = {
+				...baseConfig,
+				opGrammarlySecretRef: "op://CustomVault/CustomItem",
+			};
+			expect(config.opGrammarlySecretRef).toBe("op://CustomVault/CustomItem");
+		});
+	});
+
+	describe("1Password auto-login enablement", () => {
+		it("is disabled when opServiceAccountToken is undefined", () => {
+			const config: AppConfig = {
+				...baseConfig,
+				opServiceAccountToken: undefined,
+			};
+			// 1Password is considered "configured" when token is truthy
+			expect(!!config.opServiceAccountToken).toBe(false);
+		});
+
+		it("is disabled when opServiceAccountToken is empty string", () => {
+			const config: AppConfig = {
+				...baseConfig,
+				opServiceAccountToken: "",
+			};
+			// Empty string is falsy, so 1Password is not configured
+			expect(!!config.opServiceAccountToken).toBe(false);
+		});
+
+		it("is enabled when opServiceAccountToken has a value", () => {
+			const config: AppConfig = {
+				...baseConfig,
+				opServiceAccountToken: "ops_valid_token",
+			};
+			expect(!!config.opServiceAccountToken).toBe(true);
 		});
 	});
 });

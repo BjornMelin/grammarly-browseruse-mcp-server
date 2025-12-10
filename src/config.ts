@@ -189,6 +189,10 @@ export interface AppConfig {
   // Proxy and stealth configuration (from JSON env vars)
   proxyConfig: ProxyConfig | null;
   stealthConfig: StealthConfig | null;
+
+  // 1Password integration (optional - enables automatic Grammarly login)
+  opServiceAccountToken: string | undefined;
+  opGrammarlySecretRef: string;
 }
 
 // =============================================================================
@@ -245,6 +249,12 @@ const EnvSchema = z.object({
   // Proxy and stealth configuration (JSON strings)
   PROXY_CONFIG: z.string().optional(),
   STEALTH_CONFIG: z.string().optional(),
+
+  // 1Password integration (optional - enables automatic Grammarly login)
+  OP_SERVICE_ACCOUNT_TOKEN: z.string().optional(),
+  OP_GRAMMARLY_SECRET_REF: z
+    .string()
+    .default("op://Browserbase Agent/Grammarly"),
 
   // General settings
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -417,6 +427,10 @@ export const config: AppConfig = {
   // Proxy and stealth configuration (parsed from JSON env vars)
   proxyConfig: parsedProxyConfig,
   stealthConfig: parsedStealthConfig,
+
+  // 1Password integration
+  opServiceAccountToken: env.OP_SERVICE_ACCOUNT_TOKEN,
+  opGrammarlySecretRef: env.OP_GRAMMARLY_SECRET_REF,
 };
 
 // Startup logging for proxy/stealth config
@@ -428,6 +442,11 @@ if (config.proxyConfig?.country) {
 if (config.stealthConfig) {
   console.error(
     `[grammarly-mcp:info] Stealth level: ${config.stealthConfig.level}`,
+  );
+}
+if (config.opServiceAccountToken) {
+  console.error(
+    `[grammarly-mcp:info] 1Password auto-login enabled: ${config.opGrammarlySecretRef}`,
   );
 }
 
